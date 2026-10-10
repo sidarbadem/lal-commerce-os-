@@ -19,6 +19,8 @@
     const key = (marketplace || '').toLowerCase();
     if (key === 'trendyol') return '<span class="lal-badge lal-badge-mp-trendyol">Trendyol</span>';
     if (key === 'hepsiburada') return '<span class="lal-badge lal-badge-mp-hepsiburada">Hepsiburada</span>';
+    const manualLabels = { softhydra: 'softhydra.com', n11: 'n11', amazon: 'Amazon' };
+    if (manualLabels[key]) return `<span class="lal-badge lal-badge-soon">${manualLabels[key]}</span>`;
     return `<span class="lal-badge lal-badge-soon">${marketplace || '—'}</span>`;
   }
 
@@ -48,6 +50,9 @@
       return '<span style="color:var(--text-muted);" title="Bu sipariş için ürün maliyeti tanımlı değil, kâr hesaplanamıyor.">—</span>';
     }
     const cls = o.netProfit > 0 ? 'lal-profit-pos' : (o.netProfit < 0 ? 'lal-profit-neg' : '');
+    if (o.isManual) {
+      return `<span class="${cls}" title="Manuel sipariş: satış − alış maliyeti − komisyon − kargo">${fmtTL2(o.netProfit)}</span>`;
+    }
     const reasons = [];
     if (o.profitEstimated) {
       reasons.push('Finans API\'de henüz gerçek settlement kaydı yok, satır fiyatı ve tahmini komisyon oranıyla hesaplandı.');
@@ -110,16 +115,16 @@
         <td>▸</td>
         <td>${orderThumb(o.lines)}</td>
         <td>${fmtDateTime(o.orderDate)}</td>
-        <td>${o.orderNumber || '—'}</td>
+        <td>${escHtml(o.orderNumber) || '—'}</td>
         <td>${marketplaceBadge(o.marketplace)}</td>
-        <td>${o.customer || '—'}</td>
+        <td>${escHtml(o.customer) || '—'}</td>
         <td>${statusPill(o.status)}</td>
         <td>${o.cargoProvider || '—'}</td>
         <td>${fmtTL2(o.netAmount)}</td>
         <td>${netProfitCell(o)}</td>
       </tr>
       <tr class="detail-row" id="detail-${i}">
-        <td colspan="${ORDER_COLUMN_COUNT}"><div class="detail-inner">${renderOrderLines(o.lines)}</div></td>
+        <td colspan="${ORDER_COLUMN_COUNT}"><div class="detail-inner">${o.isManual ? renderManualDetail(o) : renderOrderLines(o.lines)}</div></td>
       </tr>
     `).join('');
 
@@ -132,6 +137,39 @@
         arrow.textContent = detail.classList.contains('open') ? '▾' : '▸';
       });
     });
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderManualDetail(o) {
+    const rows = (o.items || []).map(it => `
+      <tr>
+        <td>${escHtml(it.sku)}</td>
+        <td>${escHtml(it.productName) || '—'}</td>
+        <td>${it.quantity}</td>
+        <td>${fmtTL2(it.unitPrice)}</td>
+        <td>${fmtTL2(it.unitCost)}</td>
+      </tr>`).join('');
+    const note = o.notes ? `<div style="margin-top:8px;font-size:12.5px;color:var(--text-muted);">Not: ${escHtml(o.notes)}</div>` : '';
+    return `
+      <table>
+        <thead><tr><th>SKU</th><th>Ürün</th><th>Adet</th><th>Birim Satış</th><th>Birim Maliyet</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--text-muted);">
+        <span>Satış: <b>${fmtTL2(o.saleTotal)}</b></span>
+        <span>Maliyet: <b>${fmtTL2(o.cogsTotal)}</b></span>
+        <span>Komisyon: <b>${fmtTL2(o.commission)}</b></span>
+        <span>Kargo: <b>${fmtTL2(o.cargoCost)}</b></span>
+        <span>Net kâr: <b>${fmtTL2(o.netProfit)}</b></span>
+      </div>
+      ${note}
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="lal-btn lal-btn-secondary" type="button" data-manual-edit="${o.manualId}">Düzenle</button>
+        <button class="lal-btn lal-btn-secondary" type="button" data-manual-delete="${o.manualId}">Sil</button>
+      </div>`;
   }
 
   function renderPagination(total, page, pageSize) {
@@ -162,6 +200,8 @@
     params.set('page_size', PAGE_SIZE);
     if (status) params.set('status', status);
     if (q) params.set('q', q);
+    const mpSel = document.getElementById('marketplace-select');
+    if (mpSel && mpSel.value) params.set('marketplace', mpSel.value);
 
     try {
       const res = await fetch(`/api/orders?${params.toString()}`);
@@ -183,6 +223,7 @@
   onExist('prev-btn', 'click', () => { if (currentPage > 1) loadOrders(currentPage - 1); });
   onExist('next-btn', 'click', () => loadOrders(currentPage + 1));
   onExist('status-select', 'change', () => loadOrders(1));
+  onExist('marketplace-select', 'change', () => loadOrders(1));
   onExist('export-btn', 'click', () => {
     const status = document.getElementById('status-select').value;
     const q = document.getElementById('search-input').value.trim();

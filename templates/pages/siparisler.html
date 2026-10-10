@@ -25,6 +25,15 @@
           <option value="UnSupplied">Karşılanamadı</option>
           <option value="Returned">İade</option>
         </select>
+        <select id="marketplace-select">
+          <option value="">Tüm Kanallar</option>
+          <option value="trendyol">Trendyol</option>
+          <option value="hepsiburada">Hepsiburada</option>
+          <option value="softhydra">softhydra.com</option>
+          <option value="n11">n11</option>
+          <option value="amazon">Amazon</option>
+        </select>
+        <button id="manual-add-btn" class="lal-btn" type="button">＋ Manuel sipariş ekle</button>
         <button id="export-btn" class="lal-btn lal-btn-secondary" type="button">⬇ Excel'e Aktar</button>
       </div>
       <p class="panel-note" id="result-note">Yükleniyor…</p>
@@ -40,8 +49,10 @@
       </div>
     </div>
   </div>
+{% include "components/_manual_order_dialog.html" %}
 {% endblock %}
 
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/siparisler.js') }}"></script>
+<script src="{{ url_for('static', filename='js/manuel-siparis.js') }}"></script>
 {% endblock %}

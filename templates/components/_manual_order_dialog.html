@@ -1,0 +1,80 @@
+<style>
+  .manual-dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; width: min(760px, 94vw); background: var(--surface-2); color: var(--text, var(--text-primary, inherit)); }
+  .manual-dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  .manual-dialog-body { padding: 22px; display: grid; gap: 14px; max-height: 88vh; overflow-y: auto; }
+  .manual-dialog h3 { margin: 0; font-size: 17px; }
+  .manual-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .manual-field { display: grid; gap: 4px; font-size: 12.5px; color: var(--text-muted); }
+  .manual-dialog input, .manual-dialog select { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+  .manual-item-row { display: grid; grid-template-columns: minmax(0, 2fr) 70px 130px 130px 36px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .manual-item-row .mi-cost { font-size: 12px; color: var(--text-muted); }
+  .manual-comm { display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: 8px; }
+  .manual-preview { display: flex; gap: 20px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+  .manual-preview b { font-variant-numeric: tabular-nums; }
+  .manual-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .manual-error { color: var(--danger, #d92d20); font-size: 13px; min-height: 1em; margin: 0; }
+  @media (max-width: 640px) { .manual-grid { grid-template-columns: 1fr; } .manual-item-row { grid-template-columns: 1fr 70px 1fr; } }
+</style>
+<dialog id="manual-order-dialog" class="manual-dialog">
+  <div class="manual-dialog-body">
+    <h3 id="mo-title">Manuel sipariş ekle</h3>
+    <div class="manual-grid">
+      <label class="manual-field">Kanal
+        <select id="mo-channel">
+          <option value="softhydra">softhydra.com</option>
+          <option value="n11">n11</option>
+          <option value="amazon">Amazon</option>
+        </select>
+      </label>
+      <label class="manual-field">Tarih ve saat
+        <input type="datetime-local" id="mo-date">
+      </label>
+      <label class="manual-field">Sipariş no (opsiyonel)
+        <input type="text" id="mo-ref" placeholder="Boşsa M-numara verilir">
+      </label>
+      <label class="manual-field">Müşteri (opsiyonel)
+        <input type="text" id="mo-customer">
+      </label>
+      <label class="manual-field">Durum
+        <select id="mo-status">
+          <option value="Delivered">Teslim Edildi</option>
+          <option value="Shipped">Kargoda</option>
+          <option value="Created">Oluşturuldu</option>
+          <option value="Cancelled">İptal</option>
+        </select>
+      </label>
+      <label class="manual-field">Not (opsiyonel)
+        <input type="text" id="mo-notes">
+      </label>
+    </div>
+    <div>
+      <div class="manual-field" style="margin-bottom:6px;">Ürünler</div>
+      <div id="mo-items"></div>
+      <datalist id="mo-sku-list"></datalist>
+      <button type="button" class="lal-btn lal-btn-secondary" id="mo-add-item">＋ Ürün ekle</button>
+    </div>
+    <div class="manual-grid">
+      <label class="manual-field">Pazaryeri komisyonu
+        <div class="manual-comm">
+          <input type="text" id="mo-comm" inputmode="decimal" placeholder="0">
+          <select id="mo-comm-mode"><option value="tl">TL</option><option value="pct">%</option></select>
+        </div>
+      </label>
+      <label class="manual-field">Kargo maliyeti (TL)
+        <input type="text" id="mo-cargo" inputmode="decimal" placeholder="0">
+      </label>
+    </div>
+    <div class="manual-preview">
+      <span>Satış: <b id="mo-p-sale">—</b></span>
+      <span>Maliyet: <b id="mo-p-cogs">—</b></span>
+      <span>Komisyon: <b id="mo-p-comm">—</b></span>
+      <span>Kargo: <b id="mo-p-cargo">—</b></span>
+      <span>Net kâr: <b id="mo-p-net">—</b></span>
+    </div>
+    <p class="manual-error" id="mo-error"></p>
+    <div class="manual-actions">
+      <button type="button" class="lal-btn lal-btn-secondary" id="mo-cancel">Vazgeç</button>
+      <button type="button" class="lal-btn" id="mo-save">Kaydet</button>
+    </div>
+  </div>
+</dialog>
