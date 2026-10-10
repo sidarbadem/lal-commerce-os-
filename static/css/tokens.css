@@ -1,87 +1,82 @@
 /*
   ============================================================================
-  LAL DESIGN LANGUAGE (LDL) — Token Katmanı
+  LAL DESIGN LANGUAGE (LDL) — "Grafit Pro" token katmanı
   ============================================================================
-  Bu dosya LAL Commerce OS'in TEK gerçek tasarım kaynağıdır (single source
-  of truth). Sidebar'dan tabloya, butondan grafiğe kadar her component
-  buradaki token'lara bağlıdır — doğrudan hex/px değeri yazmaz.
+  Bu dosya LAL Commerce OS'in TEK gerçek tasarım kaynağıdır. Koyu tema
+  varsayılandır (:root); açık tema aynı dosyanın altındaki
+  html[data-lal-theme="light"] bloğunda aynı token adlarını override eder.
+  Başka hiçbir dosya tema değeri (renk) tanımlamaz.
 
-  Kural: Yeni bir modül/sayfa eklendiğinde önce buraya bakılır. Burada
-  karşılığı olmayan bir renk/spacing/radius değeri gerekiyorsa, önce token
-  olarak buraya eklenir, sonra component'te kullanılır. Component dosyaları
-  hiçbir zaman ham hex kodu veya rastgele px değeri içermez.
+  Kimlik: Apple Pro uygulamaları (Xcode / Final Cut) gibi yoğun, grafit gri
+  katmanlı, 8–10px yumuşak köşeli, SF sistem fontlu, cümle düzeninde
+  (büyük harf yok) etiketli. Marka rengi bordo korunur.
 
-  Faz 2 (LAL Design System) belgesinin birebir kod karşılığıdır.
+  Kural: Component dosyaları ham hex/rgba/px yazmaz; gerekirse önce buraya
+  token eklenir. Yeni pazaryeri etiketi de buraya eklenir.
   ============================================================================
 */
 
 :root {
-  /* ---------------------------------------------------------------------
-     1) NÖTR RENKLER — zemin / yüzey katmanları (derinlik hissi için 5 kademe)
-     --------------------------------------------------------------------- */
-  --lal-bg: #0c0d0e;
-  --lal-bg-elevated: #101113;
-  --lal-surface: #141618;
-  --lal-surface-2: #1b1d20;
-  --lal-surface-hover: #222529;
-  --lal-border: #393d40;
-  --lal-border-soft: #292c2f;
+  color-scheme: dark;
 
-  /* ---------------------------------------------------------------------
-     2) METİN
-     --------------------------------------------------------------------- */
-  --lal-text-main: #f1f2ef;
-  --lal-text-muted: #a0a5a8;
-  --lal-text-faint: #73797e;
+  /* 1) YÜZEYLER — 5 kademe grafit */
+  --lal-bg: #1c1c1e;
+  --lal-bg-elevated: #232325;
+  --lal-surface: #2c2c2e;
+  --lal-surface-2: #3a3a3c;
+  --lal-surface-hover: #444446;
+  --lal-border: rgba(255, 255, 255, 0.14);
+  --lal-border-soft: rgba(255, 255, 255, 0.08);
+  --lal-border-strong: rgba(255, 255, 255, 0.2);
+  --lal-border-hover: rgba(255, 255, 255, 0.28);
+  --lal-border-btn: rgba(255, 255, 255, 0.24);
+  --lal-input-bg: rgba(0, 0, 0, 0.25);
+  --lal-hover-wash: rgba(255, 255, 255, 0.06);
+  --lal-scrim: rgba(0, 0, 0, 0.5);
 
-  /* ---------------------------------------------------------------------
-     3) ACCENT — tek marka rengi (SoftHydra turkuazı)
-     --------------------------------------------------------------------- */
-  --lal-accent: #c12c3e;
-  --lal-accent-hover: #d64455;
-  --lal-accent-dim: #4a2028;
-  --lal-accent-glow: rgba(193, 44, 62, 0.16);
-  --lal-accent-glow-strong: rgba(193, 44, 62, 0.35);
-  --lal-accent-fg: #fff8f5;
+  /* 2) METİN */
+  --lal-text-main: #f2f2f7;
+  --lal-text-muted: #aeaeb2;
+  --lal-text-faint: #8e8e93;
 
-  /* ---------------------------------------------------------------------
-     4) SEMANTİK RENKLER — yalnızca 3 anlam rengi
-     --------------------------------------------------------------------- */
-  --lal-green: #92d3a7;
-  --lal-green-dim: rgba(146, 211, 167, 0.12);
-  --lal-red: #ec7b80;
-  --lal-red-dim: rgba(236, 123, 128, 0.12);
-  --lal-amber: #dfbd75;
-  --lal-amber-dim: rgba(223, 189, 117, 0.12);
+  /* 3) ACCENT — tek marka rengi (bordo) */
+  --lal-accent: #d64455;
+  --lal-accent-hover: #e5596a;
+  --lal-accent-dim: rgba(214, 68, 85, 0.22);
+  --lal-accent-glow: rgba(214, 68, 85, 0.16);
+  --lal-accent-glow-strong: rgba(214, 68, 85, 0.35);
+  --lal-accent-fg: #ffffff;
 
-  /* ---------------------------------------------------------------------
-     5) PAZARYERİ ETİKETLERİ — marka rengi DEĞİL, bilgi etiketi.
-     Semantik renklerle karıştırılmaz, kendi ad alanında durur.
-     Yeni pazaryeri eklendikçe (Amazon, N11, Shopify...) buraya eklenir.
-     --------------------------------------------------------------------- */
-  --lal-mp-trendyol: #F27A1A;
-  --lal-mp-trendyol-dim: rgba(242, 122, 26, 0.14);
-  --lal-mp-hepsiburada: #F5A623;
-  --lal-mp-hepsiburada-dim: rgba(245, 166, 35, 0.14);
+  /* 4) SEMANTİK — yalnızca 3 anlam rengi */
+  --lal-green: #30d158;
+  --lal-green-dim: rgba(48, 209, 88, 0.14);
+  --lal-red: #ff6961;
+  --lal-red-dim: rgba(255, 105, 97, 0.14);
+  --lal-amber: #ffc247;
+  --lal-amber-dim: rgba(255, 194, 71, 0.14);
+  --lal-violet: #a78bfa;
+  --lal-violet-dim: rgba(167, 139, 250, 0.14);
 
-  /* ---------------------------------------------------------------------
-     6) TİPOGRAFİ
-     --------------------------------------------------------------------- */
-  --lal-font-display: 'Instrument Sans', 'Inter', sans-serif;
-  --lal-font-body: 'Inter', sans-serif;
-  --lal-font-mono: 'JetBrains Mono', monospace;
+  /* 5) PAZARYERİ ETİKETLERİ — bilgi etiketi, marka rengi değil */
+  --lal-mp-trendyol: #f27a1a;
+  --lal-mp-trendyol-dim: rgba(242, 122, 26, 0.16);
+  --lal-mp-hepsiburada: #f5a623;
+  --lal-mp-hepsiburada-dim: rgba(245, 166, 35, 0.16);
 
-  --lal-text-display-xl: 700 clamp(32px, 4vw, 56px) / 1.05 var(--lal-font-display);
+  /* 6) TİPOGRAFİ — SF sistem fontu, Apple dışı cihazlarda Inter */
+  --lal-font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  --lal-font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --lal-font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
+
+  --lal-text-display-xl: 700 clamp(32px, 4vw, 52px) / 1.05 var(--lal-font-display);
   --lal-text-h1: 600 20px/1.3 var(--lal-font-display);
   --lal-text-h2: 600 15px/1.4 var(--lal-font-display);
-  --lal-text-body: 400 14.5px/1.5 var(--lal-font-body);
-  --lal-text-body-medium: 500 14.5px/1.5 var(--lal-font-body);
+  --lal-text-body: 400 14px/1.5 var(--lal-font-body);
+  --lal-text-body-medium: 500 14px/1.5 var(--lal-font-body);
   --lal-text-small: 500 13px/1.4 var(--lal-font-body);
-  --lal-text-micro: 600 10.5px/1.3 var(--lal-font-mono);
+  --lal-text-micro: 500 12px/1.35 var(--lal-font-body);
 
-  /* ---------------------------------------------------------------------
-     7) SPACING — 8px grid (temel birim 4px)
-     --------------------------------------------------------------------- */
+  /* 7) SPACING — 4px temel birim */
   --lal-space-1: 4px;
   --lal-space-2: 8px;
   --lal-space-3: 12px;
@@ -93,39 +88,95 @@
   --lal-space-12: 48px;
   --lal-space-16: 64px;
 
-  /* ---------------------------------------------------------------------
-     8) RADIUS
-     --------------------------------------------------------------------- */
-  --lal-radius-sm: 2px;
-  --lal-radius-md: 3px;
-  --lal-radius-lg: 4px;
-  --lal-radius-xl: 6px;
+  /* 8) RADIUS — kontrol 8, kart 10, çekmece/diyalog 14 */
+  --lal-radius-sm: 6px;
+  --lal-radius-md: 8px;
+  --lal-radius-lg: 10px;
+  --lal-radius-xl: 14px;
   --lal-radius-full: 999px;
 
-  /* ---------------------------------------------------------------------
-     9) ELEVATION / GÖLGE
-     --------------------------------------------------------------------- */
-  --lal-shadow-1: none;
-  --lal-shadow-2: 0 14px 32px -22px rgba(0, 0, 0, 0.8);
-  --lal-shadow-3: 0 24px 48px -28px rgba(0, 0, 0, 0.9);
-  --lal-glow-accent: inset 2px 0 0 var(--lal-accent);
+  /* 9) ELEVATION */
+  --lal-shadow-1: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  --lal-shadow-2: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  --lal-shadow-3: 0 20px 48px -12px rgba(0, 0, 0, 0.6);
+  --lal-focus-ring: 0 0 0 3px var(--lal-accent-glow-strong);
 
-  /* ---------------------------------------------------------------------
-     10) MOTION
-     --------------------------------------------------------------------- */
+  /* 10) CAM — yalnızca yüzen katmanlar (topbar, menü, Cmd+K, toast, bildirim) */
+  --lal-glass-bg: rgba(44, 44, 46, 0.72);
+  --lal-glass-border: rgba(255, 255, 255, 0.12);
+  --lal-glass-filter: saturate(1.6) blur(20px);
+
+  /* 11) MOTION */
   --lal-ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
   --lal-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --lal-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
   --lal-dur-instant: 100ms;
   --lal-dur-fast: 180ms;
   --lal-dur-base: 300ms;
   --lal-dur-slow: 550ms;
 
-  /* ---------------------------------------------------------------------
-     11) LAYOUT SABİTLERİ
-     --------------------------------------------------------------------- */
+  /* 12) LAYOUT */
   --lal-sidebar-w: 240px;
   --lal-sidebar-w-collapsed: 72px;
-  --lal-topbar-h: 64px;
+  --lal-topbar-h: 56px;
+
+  /* 13) DİĞER */
+  --lal-scroll-thumb: rgba(255, 255, 255, 0.22);
+  --lal-scroll-thumb-hover: rgba(255, 255, 255, 0.34);
+  --lal-skeleton-hi: #48484a;
+  --lal-hero-from: #2c2c2e;
+  --lal-result-bg: rgba(214, 68, 85, 0.14);
+}
+
+html[data-lal-theme="light"] {
+  color-scheme: light;
+
+  --lal-bg: #e5e5ea;
+  --lal-bg-elevated: #ececf0;
+  --lal-surface: #f2f2f7;
+  --lal-surface-2: #e3e3e8;
+  --lal-surface-hover: #d9d9de;
+  --lal-border: rgba(0, 0, 0, 0.12);
+  --lal-border-soft: rgba(0, 0, 0, 0.07);
+  --lal-border-strong: rgba(0, 0, 0, 0.18);
+  --lal-border-hover: rgba(0, 0, 0, 0.26);
+  --lal-border-btn: rgba(0, 0, 0, 0.2);
+  --lal-input-bg: #ffffff;
+  --lal-hover-wash: rgba(0, 0, 0, 0.045);
+  --lal-scrim: rgba(0, 0, 0, 0.32);
+
+  --lal-text-main: #1c1c1e;
+  --lal-text-muted: #636366;
+  --lal-text-faint: #7c7c80;
+
+  --lal-accent: #a92639;
+  --lal-accent-hover: #bd374a;
+  --lal-accent-dim: #ead3d5;
+  --lal-accent-glow: rgba(169, 38, 57, 0.1);
+  --lal-accent-glow-strong: rgba(169, 38, 57, 0.28);
+  --lal-accent-fg: #ffffff;
+
+  --lal-green: #248a3d;
+  --lal-green-dim: rgba(36, 138, 61, 0.12);
+  --lal-red: #c93a3a;
+  --lal-red-dim: rgba(201, 58, 58, 0.1);
+  --lal-amber: #a86500;
+  --lal-amber-dim: rgba(168, 101, 0, 0.12);
+  --lal-violet: #7c5cc4;
+  --lal-violet-dim: rgba(124, 92, 196, 0.12);
+
+  --lal-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --lal-shadow-2: 0 8px 24px -8px rgba(0, 0, 0, 0.18);
+  --lal-shadow-3: 0 20px 48px -12px rgba(0, 0, 0, 0.26);
+
+  --lal-glass-bg: rgba(242, 242, 247, 0.74);
+  --lal-glass-border: rgba(0, 0, 0, 0.08);
+
+  --lal-scroll-thumb: rgba(0, 0, 0, 0.22);
+  --lal-scroll-thumb-hover: rgba(0, 0, 0, 0.34);
+  --lal-skeleton-hi: #fafafc;
+  --lal-hero-from: #f2f2f7;
+  --lal-result-bg: rgba(169, 38, 57, 0.08);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -169,21 +220,4 @@
   ::view-transition-new(*) {
     animation: none !important;
   }
-}
-
-:root {
-  --lal-scroll-thumb: #3a3e41;
-  --lal-scroll-thumb-hover: #5d6265;
-  --lal-border-strong: #454a4e;
-  --lal-border-hover: #565b5f;
-  --lal-border-btn: #5a5f63;
-  --lal-input-bg: #101214;
-  --lal-skeleton-hi: #303438;
-  --lal-hero-from: #191719;
-  --lal-result-bg: #24181b;
-}
-
-:root {
-  --lal-violet: #a78bfa;
-  --lal-violet-dim: rgba(167, 139, 250, 0.12);
 }
