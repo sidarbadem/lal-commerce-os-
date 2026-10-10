@@ -91,8 +91,8 @@
   background: var(--lal-amber-dim);
   color: var(--lal-amber);
   font: var(--lal-text-micro);
-  text-transform: uppercase;
-  letter-spacing: .05em;
+  text-transform: none;
+  letter-spacing: 0;
 }
 .mpc-badge::before {
   content: '';
@@ -147,7 +147,7 @@
 .mpc-tooltip-dot { width: 7px; height: 7px; border-radius: var(--lal-radius-full); flex-shrink: 0; }
 .mpc-tooltip-dot.is-diamond { border-radius: 1px; transform: rotate(45deg); width: 6px; height: 6px; }
 .mpc-tooltip-value {
-  font-family: var(--lal-font-mono);
+  font-family: var(--lal-font-body);
   font-variant-numeric: tabular-nums;
   color: var(--lal-text-main);
   font-weight: 600;

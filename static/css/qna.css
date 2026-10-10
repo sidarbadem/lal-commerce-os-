@@ -7,14 +7,14 @@
 .qna-card.needs-clarification { border-color: var(--lal-amber); }
 
 .qna-card-header { align-items:flex-start; display:flex; gap:var(--lal-space-3); justify-content:space-between; margin-bottom:var(--lal-space-3); }
-.qna-card-sku { color:var(--lal-text-muted); font-family:var(--lal-font-mono); font-size:.76rem; }
-.qna-card-date { color:var(--lal-text-muted); font-family:var(--lal-font-mono); font-size:.78rem; white-space:nowrap; }
-.qna-card-badge { border-radius:999px; font-size:.68rem; font-weight:600; padding:2px 8px; text-transform:uppercase; letter-spacing:.04em; }
+.qna-card-sku { color:var(--lal-text-muted); font-family:var(--lal-font-body); font-size:.76rem; }
+.qna-card-date { color:var(--lal-text-muted); font-family:var(--lal-font-body); font-size:.78rem; white-space:nowrap; }
+.qna-card-badge { border-radius:999px; font-size:.68rem; font-weight:600; padding:2px 8px; text-transform: none; letter-spacing: 0; }
 .qna-card-badge.is-clarification { background:var(--lal-amber); color:var(--lal-bg); }
 .qna-card-badge.is-ready { background:var(--lal-accent); color:var(--lal-accent-fg); }
 
 .qna-card-question { color:var(--lal-text-main); font-size:.92rem; line-height:1.5; margin-bottom:var(--lal-space-3); }
-.qna-card-question strong { color:var(--lal-text-muted); font-size:.78rem; font-weight:600; text-transform:uppercase; letter-spacing:.03em; display:block; margin-bottom:4px; }
+.qna-card-question strong { color:var(--lal-text-muted); font-size:.78rem; font-weight:600; text-transform: none; letter-spacing: 0; display:block; margin-bottom:4px; }
 
 .qna-draft-box { background:var(--lal-bg-subtle, var(--lal-border-soft)); border:1px solid var(--lal-border); border-radius:var(--lal-radius-md); padding:var(--lal-space-3); width:100%; min-height:90px; font-family:inherit; font-size:.88rem; line-height:1.5; color:var(--lal-text-main); resize:vertical; box-sizing:border-box; }
 
@@ -23,7 +23,7 @@
 .qna-fact-form { display:grid; gap:var(--lal-space-2); margin-top:var(--lal-space-2); }
 .qna-fact-form input, .qna-fact-form textarea { background:var(--lal-surface); border:1px solid var(--lal-border); border-radius:var(--lal-radius-md); padding:8px 10px; font-family:inherit; font-size:.85rem; color:var(--lal-text-main); box-sizing:border-box; width:100%; }
 .qna-fact-form textarea { min-height:70px; resize:vertical; }
-.qna-fact-form label { color:var(--lal-text-muted); font-size:.76rem; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+.qna-fact-form label { color:var(--lal-text-muted); font-size:.76rem; font-weight:600; text-transform: none; letter-spacing: 0; }
 
 .qna-card-actions { display:flex; gap:var(--lal-space-2); margin-top:var(--lal-space-3); }
 .qna-btn { border-radius:var(--lal-radius-md); border:1px solid var(--lal-border); background:var(--lal-surface); color:var(--lal-text-main); cursor:pointer; font-size:.85rem; font-weight:600; padding:8px 14px; transition:opacity .15s; }

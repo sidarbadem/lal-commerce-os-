@@ -93,7 +93,7 @@
 .lal-nav-soon {
   margin-left: auto;
   font: var(--lal-text-micro);
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--lal-text-faint);
   background: var(--lal-surface-2);
   padding: 2px 6px;
@@ -164,20 +164,8 @@
   background: var(--lal-accent);
   color: var(--lal-accent-fg);
   font-weight: 600;
-  position: relative;
-  overflow: hidden;
 }
 .lal-btn-primary:hover:not(:disabled) { background: var(--lal-accent-hover); }
-.lal-btn-primary::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,0.35), transparent 55%);
-  opacity: 0;
-  transition: opacity var(--lal-dur-base) var(--lal-ease-out);
-  pointer-events: none;
-}
-.lal-btn-primary:hover::before { opacity: 1; }
 
 .lal-btn-secondary { background: var(--lal-surface-2); border-color: var(--lal-border); color: var(--lal-text-main); }
 .lal-btn-secondary:hover:not(:disabled) { background: var(--lal-surface-hover); }
@@ -185,8 +173,8 @@
 .lal-btn-ghost { background: transparent; color: var(--lal-text-muted); }
 .lal-btn-ghost:hover:not(:disabled) { color: var(--lal-text-main); background: var(--lal-surface-hover); }
 
-.lal-btn-danger { background: var(--lal-red-dim); border-color: rgba(240,102,90,0.35); color: var(--lal-red); }
-.lal-btn-danger:hover:not(:disabled) { background: rgba(240,102,90,0.2); }
+.lal-btn-danger { background: var(--lal-red-dim); border-color: transparent; color: var(--lal-red); }
+.lal-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--lal-red) 22%, transparent); }
 
 .lal-btn-icon { padding: var(--lal-space-2); border-radius: var(--lal-radius-md); }
 
@@ -239,8 +227,8 @@
 .growth-item strong { color: var(--lal-text-main); }
 .growth-item p { margin: var(--lal-space-1) 0; color: var(--lal-text-muted); }
 .growth-item small { color: var(--lal-amber); }
-.lal-kpi-label { font: var(--lal-text-micro); text-transform: uppercase; letter-spacing: 0.06em; color: var(--lal-text-muted); margin-bottom: var(--lal-space-2); }
-.lal-kpi-value { font: var(--lal-text-h1); font-family: var(--lal-font-mono); font-variant-numeric: tabular-nums; color: var(--lal-text-main); font-size: 22px; }
+.lal-kpi-label { font: var(--lal-text-micro); text-transform: none; letter-spacing: 0; color: var(--lal-text-muted); margin-bottom: var(--lal-space-2); }
+.lal-kpi-value { font: var(--lal-text-h1); font-family: var(--lal-font-body); font-variant-numeric: tabular-nums; color: var(--lal-text-main); font-size: 22px; }
 
 .lal-flow {
   display: flex;
@@ -278,7 +266,7 @@
    --------------------------------------------------------------------- */
 .lal-badge {
   display: inline-flex; align-items: center; gap: 4px;
-  font: var(--lal-text-micro); text-transform: uppercase; letter-spacing: 0.04em;
+  font: var(--lal-text-micro); text-transform: none; letter-spacing: 0;
   padding: 3px 8px; border-radius: var(--lal-radius-full);
 }
 .lal-badge-mp-trendyol { background: var(--lal-mp-trendyol-dim); color: var(--lal-mp-trendyol); }
@@ -342,8 +330,8 @@
 .lal-field-grow { flex: 1; min-width: 220px; }
 .lal-field label {
   font: var(--lal-text-micro);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--lal-text-muted);
 }
 .lal-field input, .lal-field select {
@@ -388,7 +376,7 @@
   border-radius: var(--lal-radius-md);
   font: var(--lal-text-small);
 }
-.lal-callout-success { background: var(--lal-green-dim); border: 1px solid rgba(52,211,153,0.3); color: var(--lal-text-main); }
+.lal-callout-success { background: var(--lal-green-dim); border: 1px solid color-mix(in srgb, var(--lal-green) 30%, transparent); color: var(--lal-text-main); }
 .lal-form-msg { margin-bottom: var(--lal-space-3); font: var(--lal-text-small); }
 
 .loading-sm { padding: var(--lal-space-5) !important; }
@@ -419,11 +407,11 @@ img.lal-brand-mark {
   width: 28px;
   height: 28px;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: var(--lal-radius-sm);
   background: transparent;
 }
 
-a.lal-version { display: block; padding: 2px 13px 14px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; color: var(--lal-text-muted, var(--lal-text-main)); opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+a.lal-version { display: block; padding: 2px 13px 14px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; text-decoration: none; color: var(--lal-text-muted, var(--lal-text-main)); opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 a.lal-version:hover { opacity: 1; text-decoration: underline; }
 .lal-sidebar.is-collapsed a.lal-version { display: none; }
 
@@ -438,7 +426,7 @@ html.rv-on .rv.rv-in { opacity: 1; transform: none; clip-path: inset(0 0 0 0); }
 .alerts-toggle { align-self: flex-start; background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: inherit; opacity: .7; cursor: pointer; text-decoration: underline; }
 .alerts-toggle:hover { opacity: 1; }
 
-.ai2-brief-line { padding: 11px 0; border-top: 1px solid rgba(128,128,128,.28); }
+.ai2-brief-line { padding: 11px 0; border-top: 1px solid var(--lal-border-soft); }
 .ai2-brief-line:first-child { border-top: 0; padding-top: 0; }
 
 .lal-page-content .summary-grid { grid-template-columns: repeat(6, 1fr); }
@@ -456,6 +444,6 @@ html.rv-on .rv.rv-in { opacity: 1; transform: none; clip-path: inset(0 0 0 0); }
 .ai2-chat-panel .ai2-chat-body { flex: 0 1 auto; max-height: 420px; }
 .ai2-chat-panel .ai2-chat-input-row { margin-top: var(--lal-space-4); }
 
-a.lal-logout { display: block; padding: 2px 13px 6px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; color: var(--lal-text-muted, var(--lal-text-main)); opacity: .6; }
+a.lal-logout { display: block; padding: 2px 13px 6px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; text-decoration: none; color: var(--lal-text-muted, var(--lal-text-main)); opacity: .6; }
 a.lal-logout:hover { opacity: 1; text-decoration: underline; }
 .lal-sidebar.is-collapsed a.lal-logout { display: none; }

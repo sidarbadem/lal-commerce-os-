@@ -1,8 +1,8 @@
 html .lal-command-greeting { align-items: flex-end; margin-bottom: var(--lal-space-8); }
 html .lal-command-greeting p {
   margin: 0 0 14px;
-  font: 600 10px/1 var(--lal-font-mono, 'JetBrains Mono', monospace);
-  letter-spacing: .22em; text-transform: uppercase; color: var(--lal-text-faint);
+  font: 600 12px/1 var(--lal-font-body);
+  letter-spacing: 0; text-transform: none; color: var(--lal-text-faint);
 }
 html .lal-command-greeting h1 {
   margin: 0; font-size: clamp(36px, 4.2vw, 56px); line-height: 1.02;
@@ -21,8 +21,8 @@ html .hero-stat:hover { transform: translateY(-2px); border-color: var(--lal-tex
 html .hero-stat-icon { background: transparent; border: 0; color: var(--lal-text-faint); opacity: .7; }
 html .hero-stat-label {
   margin-bottom: 10px;
-  font: 600 10px/1 var(--lal-font-mono, 'JetBrains Mono', monospace);
-  letter-spacing: .16em; color: var(--lal-text-faint);
+  font: 600 12px/1 var(--lal-font-body);
+  letter-spacing: 0; color: var(--lal-text-faint);
 }
 html .hero-stat-value {
   font-size: clamp(30px, 2.6vw, 40px); line-height: 1.05; letter-spacing: -.03em;
@@ -34,8 +34,8 @@ html #net-profit-hero .hero-stat-value { font-size: clamp(36px, 3.4vw, 52px); }
 html .summary-grid .card { transition: background .25s ease; }
 html .summary-grid .card:hover { background: var(--lal-surface-2); }
 html .summary-grid .card .label {
-  font: 500 10px/1.5 var(--lal-font-mono, 'JetBrains Mono', monospace);
-  letter-spacing: .1em; text-transform: uppercase; color: var(--lal-text-faint);
+  font: 500 12px/1.5 var(--lal-font-body);
+  letter-spacing: 0; text-transform: none; color: var(--lal-text-faint);
 }
 html .summary-grid .card .value { font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 
