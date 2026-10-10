@@ -10,14 +10,14 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 
-<!-- LDL katman sırası önemli: token -> legacy köprü -> eski component'ler -> yeni component'ler -->
+<!-- LDL katman sırası önemli: token -> legacy köprü -> eski component'ler -> component'ler -> Apple tema katmanı -->
 <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/legacy-bridge.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/legacy.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/precision-theme.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/apple-theme.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/cmdk-toast.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
 
