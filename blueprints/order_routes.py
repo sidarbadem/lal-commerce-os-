@@ -20,6 +20,7 @@ from database import get_connection, list_product_images
 from finance_engine import NEVER_FULFILLED_STATUSES
 from finance_engine import best_sellers as compute_best_sellers
 from finance_engine import compute_profit_summary
+from manual_orders import MANUAL_CHANNELS, merge_into_listing
 from sync_core import DATA_START_DATE, _check_credentials, _resolve_sync_range, get_daily_returns
 
 bp = Blueprint("order_routes", __name__)
@@ -268,6 +269,8 @@ def api_orders():
     if mp_filter:
         where.append("marketplace = ?")
         params.append(mp_filter)
+    elif marketplace in MANUAL_CHANNELS:
+        where.append("1 = 0")
     where_sql = " AND ".join(where)
 
     with get_connection() as conn:
@@ -342,6 +345,10 @@ def api_orders():
             "cargoEstimated": profit_info.get("cargoEstimated", False),
         })
 
+    orders, total = merge_into_listing(
+        orders, total, where_sql=where_sql, params=params, offset=offset, page_size=page_size,
+        start_ms=start_ms, end_ms=end_ms, status=status, q=q, marketplace=marketplace,
+    )
     return jsonify({
         "orders": orders,
         "total": total,

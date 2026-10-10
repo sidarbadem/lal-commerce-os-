@@ -77,6 +77,8 @@ from blueprints.order_routes import bp as order_routes_bp  # noqa: E402
 app.register_blueprint(order_routes_bp)
 from blueprints.paketlenecekler_routes import bp as paketlenecekler_routes_bp  # noqa: E402
 app.register_blueprint(paketlenecekler_routes_bp)
+from blueprints.manual_order_routes import bp as manual_order_routes_bp  # noqa: E402
+app.register_blueprint(manual_order_routes_bp)
 
 from blueprints.finance_routes import bp as finance_routes_bp  # noqa: E402
 app.register_blueprint(finance_routes_bp)

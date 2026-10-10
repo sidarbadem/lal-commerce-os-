@@ -423,3 +423,7 @@ istemcisi için kapsamlı senaryolar içerir (`tests/`).
 ## Lisans
 
 Bu depo için henüz bir lisans belirtilmemiştir.
+
+## Manuel siparisler
+
+softhydra.com, n11 ve Amazon siparisleri API ile cekilemedigi icin `manuel_siparisler` ve `manuel_siparis_kalemleri` tablolarina elle girilir (`manual_orders.py`, `blueprints/manual_order_routes.py`). Net kar = satis - alis maliyeti (KDV dahil, kayit aninda saklanir) - komisyon - kargo. `/api/orders` bu kayitlari Trendyol/Hepsiburada ile tarih sirasinda birlestirir; sync ve `finance_engine` degismez.

@@ -400,6 +400,37 @@ def _migrate_paketlenecekler_islemleri(conn):
     """)
 
 
+def _migrate_manuel_siparisler(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS manuel_siparisler (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            order_ref TEXT,
+            order_date INTEGER NOT NULL,
+            customer TEXT,
+            status TEXT NOT NULL DEFAULT 'Delivered',
+            commission REAL NOT NULL DEFAULT 0,
+            cargo_cost REAL NOT NULL DEFAULT 0,
+            notes TEXT,
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_manuel_siparisler_date ON manuel_siparisler(order_date)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS manuel_siparis_kalemleri (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL REFERENCES manuel_siparisler(id) ON DELETE CASCADE,
+            sku TEXT NOT NULL,
+            product_name TEXT,
+            quantity INTEGER NOT NULL,
+            unit_price REAL NOT NULL,
+            unit_cost REAL NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_manuel_kalemleri_order ON manuel_siparis_kalemleri(order_id)")
+
+
 _MIGRATIONS = [
     ("2026_07_28_composite_marketplace_keys", _migrate_composite_keys),
     ("2026_08_09_growth_columns", _migrate_growth_columns),
@@ -409,6 +440,7 @@ _MIGRATIONS = [
     ("2026_09_12_cargo_labels", _migrate_cargo_labels),
     ("2026_09_14_cargo_reconciliation", _migrate_cargo_reconciliation),
     ("2026_10_07_paketlenecekler_islemleri", _migrate_paketlenecekler_islemleri),
+    ("2026_10_10_manuel_siparisler", _migrate_manuel_siparisler),
 ]
 
 def init_db():
