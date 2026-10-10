@@ -1,44 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Paketlenecekler — LAL{% endblock %}
 {% block page_title %}Paketlenecekler{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/paketlenecekler.css') }}">{% endblock %}
 
 {% block content %}
-<style>
-.pk-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.pk-list{display:grid;gap:12px}
-.pk-card{display:grid;grid-template-columns:1fr auto;gap:16px;padding:16px 18px;border:1px solid var(--lal-border,rgba(128,128,128,.25));border-radius:14px}
-.pk-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-.pk-badge{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;color:#fff}
-.pk-mp-ty{background:var(--lal-mp-trendyol,#F27A1A)}
-.pk-mp-hb{background:var(--lal-mp-hepsiburada,#FF6000)}
-.pk-state{font-size:12px;opacity:.7}
-.pk-no{font-weight:600}
-.pk-lines{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:3px;font-size:14px}
-.pk-lines em{opacity:.55;font-style:normal;font-size:12px}
-.pk-qty{font-weight:600}
-.pk-meta{font-size:13px;opacity:.75;margin-top:8px}
-.pk-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.pk-side{text-align:right;min-width:150px}
-.pk-timer{display:block;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
-.pk-timer.is-soon{color:#d97706}
-.pk-timer.is-late{color:#dc2626}
-.pk-due{font-size:12px;opacity:.65}
-.pk-total{margin-top:10px;font-weight:600}
-.pk-empty{padding:28px;text-align:center;opacity:.7}
-.pk-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
-.pk-modal{width:min(560px,100%);max-height:90vh;overflow:auto;background:rgba(20,20,24,.98);color:#f2f2f2;border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:22px}
-.pk-modal h3{margin:0 0 6px;font-size:18px}
-.pk-modal .pk-sub{opacity:.7;font-size:13px;margin-bottom:12px;display:block}
-.pk-modal select{width:100%;margin:4px 0 12px}
-.pk-modal pre{background:rgba(255,255,255,.06);padding:10px;border-radius:10px;font-size:12px;overflow:auto;max-height:220px;white-space:pre-wrap;word-break:break-all}
-.pk-msg{font-size:13px;margin:10px 0}
-.pk-msg.is-warn{color:#f59e0b}
-.pk-msg.is-err{color:#f87171}
-.pk-msg.is-ok{color:#4ade80}
-.pk-modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
-@media (max-width:640px){.pk-card{grid-template-columns:1fr}.pk-side{text-align:left}}
-</style>
-
 <section class="lal-page-intro">
   <p>Kargo operasyonu</p>
   <h1>Bugün çıkacaklar, <strong>tek ekranda.</strong></h1>
