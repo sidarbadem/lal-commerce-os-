@@ -171,10 +171,11 @@ gerekiyorsa `static/js/xxx.js` + `{% block page_scripts %}`.
 2. legacy-bridge.css      → eski class isimlerini yeni token'lara bağlayan köprü
 3. legacy.css             → refaktör öncesinden kalma component stilleri
 4. components.css         → güncel/yeni component stilleri
-5. precision-theme.css    → "LAL Precision Console" ortak görsel kimliği +
-                            AÇIK TEMA override'ları (html[data-lal-theme="light"])
-+ sayfa-özel CSS (varsa)  → payout-calendar.css, monthly-profit-chart.css,
-                            ayarlar-credentials.css, components-addition.css
+5. apple-theme.css        → "Grafit Pro" ortak Apple tarzı katman (yumuşak köşe,
+                            cam topbar, cümle düzeni etiketler). Renk TANIMLAMAZ.
++ sayfa-özel CSS (varsa)  → product-cards.css, paketlenecekler.css, payout-calendar.css,
+                            monthly-profit-chart.css, ayarlar-credentials.css, components-addition.css
++ sidebar/topbar          → sidebar-editorial.css ve topbar-editorial.css (şablonlardan yüklenir)
 ```
 
 Yeni bir renk/spacing değeri gerekiyorsa **önce `tokens.css`'e eklenir**,
@@ -185,7 +186,7 @@ sonra component'te `var(--lal-...)` ile kullanılır.
 - Tema seçimi `<html data-lal-theme="dark|light">` attribute'unda tutulur,
   `localStorage['lal-theme']` içinde saklanır (bkz. `static/js/shell.js`).
 - `tokens.css` içindeki `--lal-*` değişkenleri **koyu tema varsayılan**
-  değerleridir; `precision-theme.css` içinde `html[data-lal-theme="light"]`
+  değerleridir; yine `tokens.css` içindeki `html[data-lal-theme="light"]`
   bloğu aynı değişkenleri açık tema değerleriyle **override** eder.
   Yani bir component her zaman `var(--lal-bg)` gibi token'ı kullanır,
   tema farkını asla kendisi `if/else` ile yönetmez.

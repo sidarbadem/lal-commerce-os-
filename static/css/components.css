@@ -362,7 +362,7 @@
    UTILITY — JS'in element.style.display ile açtığı/kapattığı elementlerin
    başlangıç durumu (inline style="display:none" yerine)
    --------------------------------------------------------------------- */
-/* !important: precision-theme.css'teki .loading{display:grid} gibi tek-class
+/* !important: apple-theme.css'teki .loading{display:grid} gibi tek-class
    kurallar aynı specificity'de bu dosyadan SONRA yüklendiği için is-hidden'ı
    eziyordu (loading göstergesi JS tarafından gizlense de görünür kalıyordu --
    Müşteri Soruları, Yorumlar, Raporlar panellerinde donmuş yükleniyor sorunu).
