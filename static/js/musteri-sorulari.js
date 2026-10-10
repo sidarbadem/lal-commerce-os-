@@ -82,7 +82,7 @@ function showCardStatus(card, message, isError) {
   const note = card.querySelector('.qna-card-status-note');
   if (!note) return;
   note.textContent = message;
-  note.style.color = isError ? '#d0342c' : 'var(--lal-text-muted)';
+  note.style.color = isError ? 'var(--lal-red)' : 'var(--lal-text-muted)';
   note.classList.remove('is-hidden');
 }
 

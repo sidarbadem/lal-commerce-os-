@@ -34,7 +34,7 @@
     }
 
     tbody.innerHTML = items.map(function (it) {
-      const rowStyle = it.lowStock ? ' style="background:rgba(248,113,113,0.15);"' : '';
+      const rowStyle = it.lowStock ? ' style="background:var(--lal-red-dim);"' : '';
       return (
         '<tr data-marketplace="' + it.marketplace + '" data-sku="' + it.sku + '"' + rowStyle + '>' +
         '<td>' + (it.marketplace === 'trendyol' ? 'Trendyol' : 'Hepsiburada') + '</td>' +

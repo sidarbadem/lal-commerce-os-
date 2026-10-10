@@ -262,8 +262,8 @@
 
     if (!cost || cost <= 0) {
       resultEl.classList.remove('is-hidden');
-      resultEl.style.background = 'rgba(240,102,90,0.12)';
-      resultEl.style.borderColor = 'rgba(240,102,90,0.3)';
+      resultEl.style.background = 'var(--lal-red-dim)';
+      resultEl.style.borderColor = 'color-mix(in srgb, var(--lal-red) 30%, transparent)';
       resultEl.innerHTML = '<span style="color:var(--lal-red);">Geçerli bir maliyet girin.</span>';
       return;
     }
@@ -272,8 +272,8 @@
     resultEl.classList.remove('is-hidden');
 
     if (denom <= 0) {
-      resultEl.style.background = 'rgba(240,102,90,0.12)';
-      resultEl.style.borderColor = 'rgba(240,102,90,0.3)';
+      resultEl.style.background = 'var(--lal-red-dim)';
+      resultEl.style.borderColor = 'color-mix(in srgb, var(--lal-red) 30%, transparent)';
       resultEl.innerHTML = '<span style="color:var(--lal-red);">Komisyon + hedef marj toplamı %100\'ü geçemez — bu kombinasyonla hiçbir fiyat hedefe ulaşamaz. Hedef marjı veya komisyonu düşürün.</span>';
       return;
     }
@@ -283,8 +283,8 @@
     const netAfterCommission = suggestedPrice - commissionAmount;
     const profit = netAfterCommission - cost;
 
-    resultEl.style.background = 'rgba(52,211,153,0.12)';
-    resultEl.style.borderColor = 'rgba(52,211,153,0.3)';
+    resultEl.style.background = 'var(--lal-green-dim)';
+    resultEl.style.borderColor = 'color-mix(in srgb, var(--lal-green) 30%, transparent)';
     resultEl.innerHTML = `
       <div style="font-size:13px; color:var(--text-muted); margin-bottom:6px;">Önerilen Satış Fiyatı (KDV Dahil)</div>
       <div style="font-size:26px; font-weight:700; color:var(--green); margin-bottom:12px;">${fmtTL2(suggestedPrice)}</div>

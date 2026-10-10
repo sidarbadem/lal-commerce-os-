@@ -261,7 +261,7 @@
   // gösterilen "net kâr" HER ZAMAN sabit giderler dahil nihai rakamdır.
   //
   // NOT / TEŞHİS: --lal-accent bu tema sisteminde kırmızı/bordo bir tondur
-  // (#c12c3e koyu, #a92639 açık tema — bkz. tokens.css / precision-theme.css),
+  // (koyu #d64455, açık #a92639 — bkz. tokens.css),
   // bu yüzden pozitif olması beklenen Net Kâr için kullanılmıyor —
   // --lal-green kullanılıyor (LAL'in 3 semantik renginden biri).
   function monthlyProfitMetrics() {
@@ -313,12 +313,8 @@
   // altındaysa (örn. çok küçük bir ay/metrik) üstüne etiket YAZILMAZ —
   // hem görsel gürültüyü azaltır hem de bitişik minik çubukların
   // etiketlerinin üst üste binmesini engeller (tam tutar zaten hover
-  // tooltip'inde mevcut). Renk için token okumak yerine BİLEREK doğrudan
-  // aktif temayı (document.documentElement.dataset.lalTheme) kontrol
-  // ediyoruz ve koyu temada tam beyaz (#FFFFFF) kullanıyoruz — bu, hangi
-  // token'ın hangi tonda tanımlı olduğuna bağlı olmayan, garantili en
-  // yüksek kontrast sonucu verir (açık temada ise --lal-text-main zaten
-  // koyu/okunur bir ton, bkz. precision-theme.css).
+  // tooltip'inde mevcut). Etiket rengi --lal-text-main token'ından okunur
+  // (her iki temada da en yüksek kontrastlı metin tonu, bkz. tokens.css).
   //
   // İSTİSNA — devam eden (şu anki) ay: bu her zaman en sağdaki bar'dır ve
   // sağında komşu bar olmadığı için çakışma riski yoktur. Ayın ilk
@@ -328,9 +324,7 @@
   // yokmuş gibi görünür. currentMonthIndex bu ay için eşiği by-pass eder.
   const MONTHLY_PROFIT_LABEL_MIN_PX = 14;
   function monthlyProfitValueLabelColor() {
-    return document.documentElement.dataset.lalTheme === 'dark'
-      ? '#FFFFFF'
-      : '#252424';
+    return lalToken('--lal-text-main');
   }
   const monthlyProfitBarValueLabels = {
     id: 'mpcBarValueLabels',

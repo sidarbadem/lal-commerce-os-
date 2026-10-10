@@ -86,9 +86,14 @@
 
   // ---------- 4) Chart.js varsayılanları ----------
   if (window.Chart) {
-    Chart.defaults.font.family = "'Instrument Sans', 'Inter', -apple-system, sans-serif";
-    Chart.defaults.color = '#a0a5a8';
-    Chart.defaults.borderColor = 'rgba(241,242,239,0.12)';
+    const applyChartTheme = () => {
+      const cs = getComputedStyle(document.documentElement);
+      Chart.defaults.color = cs.getPropertyValue('--lal-text-muted').trim();
+      Chart.defaults.borderColor = cs.getPropertyValue('--lal-border-soft').trim();
+    };
+    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
+    applyChartTheme();
+    new MutationObserver(applyChartTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-lal-theme'] });
     Chart.defaults.animation = { duration: reduceMotion ? 0 : 520, easing: 'easeOutQuart' };
     if (Chart.defaults.transitions && Chart.defaults.transitions.active) {
       Chart.defaults.transitions.active.animation.duration = reduceMotion ? 0 : 250;
