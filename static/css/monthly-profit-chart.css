@@ -109,8 +109,26 @@
 /* ---------- Grafik alanı + özel tooltip konteyneri ---------- */
 .mpc-chart-wrap {
   position: relative;
-  height: 380px;
+  height: 460px;
 }
+
+/* ---------- Aylık rakam tablosu (grafiğin altında) ---------- */
+.mpc-table-wrap {
+  margin-top: var(--lal-space-5);
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--lal-border-soft);
+  border-radius: var(--lal-radius-lg);
+}
+.mpc-table { width: 100%; border-collapse: collapse; font: var(--lal-text-body); font-variant-numeric: tabular-nums; }
+.mpc-table th, .mpc-table td { padding: 10px var(--lal-space-4); text-align: right; white-space: nowrap; border-bottom: 1px solid var(--lal-border-soft); }
+.mpc-table th:first-child, .mpc-table td:first-child { text-align: left; }
+.mpc-table th { position: sticky; top: 0; background: var(--lal-surface-2); z-index: 1; }
+.mpc-table tbody tr:last-child td { border-bottom: 0; }
+.mpc-table td { font-weight: 500; }
+.mpc-table td.is-pos { color: var(--lal-green); font-weight: 600; }
+.mpc-table td.is-neg { color: var(--lal-red); font-weight: 600; }
+.mpc-table-live { margin-left: var(--lal-space-2); padding: 2px 8px; border-radius: var(--lal-radius-full); background: var(--lal-amber-dim); color: var(--lal-amber); font: var(--lal-text-micro); }
 .mpc-chart-wrap canvas { position: relative; z-index: 1; }
 
 .mpc-tooltip {

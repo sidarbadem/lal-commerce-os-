@@ -118,3 +118,6 @@ tbody tr:hover { background: var(--lal-hover-wash); }
 a.lal-btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .lal-sidebar { scrollbar-width: none; }
 .lal-sidebar::-webkit-scrollbar { display: none; }
+
+.lal-section-title { margin: var(--lal-space-8) 0 var(--lal-space-3); font: var(--lal-text-h2); color: var(--lal-text-muted); }
+.lal-page-content .mpc-panel { margin-top: 0; }

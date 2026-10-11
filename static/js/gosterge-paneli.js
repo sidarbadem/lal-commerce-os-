@@ -159,6 +159,7 @@
   let monthlyProfitChart, monthlyProfitBarChart, monthlyProfitLoaded = false;
   let monthlyProfitView = 'trend'; // 'trend' | 'cfo'
   let monthlyProfitMonths = [];
+  const LAL_CHART_FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
   const monthlyProfitTlFmt = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
 
   // KRİTİK VERİ KURALI: panelde gösterilen "Net Kâr" HER ZAMAN
@@ -322,7 +323,7 @@
   // 14px eşiğinin altında kalır) bu eşik istisnasız uygulanırsa devam
   // eden ay için Ciro/Brüt Kâr/Net Kâr etiketleri tamamen kaybolur — veri
   // yokmuş gibi görünür. currentMonthIndex bu ay için eşiği by-pass eder.
-  const MONTHLY_PROFIT_LABEL_MIN_PX = 14;
+  const MONTHLY_PROFIT_LABEL_MIN_PX = 16;
   function monthlyProfitValueLabelColor() {
     return lalToken('--lal-text-main');
   }
@@ -332,7 +333,7 @@
       const ctx = chart.ctx;
       const zeroY = chart.scales.y.getPixelForValue(0);
       ctx.save();
-      ctx.font = "700 10px 'Inter', sans-serif";
+      ctx.font = `600 12.5px ${LAL_CHART_FONT}`;
       ctx.textAlign = 'center';
       ctx.fillStyle = monthlyProfitValueLabelColor();
       chart.data.datasets.forEach((ds, dsIndex) => {
@@ -502,6 +503,32 @@
     }
   }
 
+  // Aylık rakamların tam TL tablosu — grafikteki kısa etiketlere (₺46,8B)
+  // ek olarak her ayın gerçek tutarlarını okunur biçimde verir. Yeniden
+  // eskiye sıralı; devam eden ay "devam ediyor" etiketiyle işaretlenir.
+  function renderMonthlyProfitTable(months) {
+    const body = document.getElementById('monthlyProfitTableBody');
+    if (!body) return;
+    const curIdx = monthlyProfitCurrentMonthIndex(months);
+    const rows = months.map((m, i) => {
+      const rev = m.revenue || 0;
+      const gross = m.trueGrossProfit || 0;
+      const net = monthlyProfitRealNet(m);
+      const [y, mo] = m.month.split('-');
+      const label = new Date(y, mo - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+      const margin = rev ? `%${((net / rev) * 100).toFixed(1).replace('.', ',')}` : '–';
+      return `<tr>
+        <td>${label}${i === curIdx ? ' <span class="mpc-table-live">devam ediyor</span>' : ''}</td>
+        <td>${monthlyProfitTlFmt.format(rev)}</td>
+        <td>${monthlyProfitTlFmt.format(gross)}</td>
+        <td class="${net < 0 ? 'is-neg' : 'is-pos'}">${monthlyProfitTlFmt.format(net)}</td>
+        <td>${margin}</td>
+      </tr>`;
+    }).reverse();
+    body.innerHTML = rows.join('');
+    setVisible('monthlyProfitTableWrap', true);
+  }
+
   // Her iki görünümü de aynı `months` verisiyle inşa eder/günceller — tek
   // fetch, tek veri kaynağı; sadece Trend Analizi (line) ve Finansal Özet
   // (CFO grouped-bar) render fonksiyonları farklıdır.
@@ -513,6 +540,7 @@
 
     renderMonthlyProfitLineChart(months);
     renderMonthlyProfitBarChart(months);
+    renderMonthlyProfitTable(months);
 
     // Chart.js instance'ları artık hazır. Mevcut view state'ini
     // canvas'lara tekrar uygula.
@@ -677,7 +705,7 @@
           x: {
             grid: { display: false },
             border: { color: lalToken('--lal-border-soft') },
-            ticks: { font: { size: 11.5, family: "'Inter', sans-serif" }, color: lalToken('--lal-text-faint') },
+            ticks: { font: { size: 13, family: LAL_CHART_FONT }, color: lalToken('--lal-text-muted'), padding: 8 },
           },
           // Tek eksen (brief final karar: dual-axis yok). Ciro/kâr ölçek
           // farkı, veri normalize edilerek değil; Ciro'nun en ince/en nötr
@@ -687,7 +715,8 @@
             beginAtZero: true,
             grid: { color: lalToken('--lal-border-soft') },
             border: { display: false },
-            ticks: { font: { size: 11, family: "'Inter', sans-serif" }, color: lalToken('--lal-text-faint'), maxTicksLimit: 6, callback: (v) => monthlyProfitTlFmt.format(v) },
+            ticks: { font: { size: 12.5, family: LAL_CHART_FONT }, color: lalToken('--lal-text-muted'), padding: 10, maxTicksLimit: 6, callback: (v) => monthlyProfitTlFmt.format(v) },
+            afterFit(scale) { scale.width += 10; },
           },
         },
       },
@@ -725,7 +754,7 @@
       borderWidth: 1,
       borderRadius: 6,
       borderSkipped: false,
-      maxBarThickness: 14,
+      maxBarThickness: 22,
     }));
 
     monthlyProfitBarChart = new Chart(ctx, {
@@ -746,7 +775,7 @@
           x: {
             grid: { display: false },
             border: { color: lalToken('--lal-border-soft') },
-            ticks: { font: { size: 11.5, family: "'Inter', sans-serif" }, color: lalToken('--lal-text-faint') },
+            ticks: { font: { size: 13, family: LAL_CHART_FONT }, color: lalToken('--lal-text-muted'), padding: 8 },
           },
           y: {
             beginAtZero: true,
@@ -755,7 +784,8 @@
             grace: '8%',
             grid: { color: lalToken('--lal-border-soft') },
             border: { display: false },
-            ticks: { font: { size: 11, family: "'Inter', sans-serif" }, color: lalToken('--lal-text-faint'), maxTicksLimit: 6, callback: (v) => monthlyProfitTlFmt.format(v) },
+            ticks: { font: { size: 12.5, family: LAL_CHART_FONT }, color: lalToken('--lal-text-muted'), padding: 10, maxTicksLimit: 6, callback: (v) => monthlyProfitTlFmt.format(v) },
+            afterFit(scale) { scale.width += 10; },
           },
         },
       },
@@ -781,16 +811,16 @@
         ds.pointBorderColor = lalToken('--lal-surface');
       });
       monthlyProfitChart.options.scales.x.border.color = lalToken('--lal-border-soft');
-      monthlyProfitChart.options.scales.x.ticks.color = lalToken('--lal-text-faint');
+      monthlyProfitChart.options.scales.x.ticks.color = lalToken('--lal-text-muted');
       monthlyProfitChart.options.scales.y.grid.color = lalToken('--lal-border-soft');
-      monthlyProfitChart.options.scales.y.ticks.color = lalToken('--lal-text-faint');
+      monthlyProfitChart.options.scales.y.ticks.color = lalToken('--lal-text-muted');
       monthlyProfitChart.update();
     }
     if (monthlyProfitBarChart) {
       monthlyProfitBarChart.options.scales.x.border.color = lalToken('--lal-border-soft');
-      monthlyProfitBarChart.options.scales.x.ticks.color = lalToken('--lal-text-faint');
+      monthlyProfitBarChart.options.scales.x.ticks.color = lalToken('--lal-text-muted');
       monthlyProfitBarChart.options.scales.y.grid.color = lalToken('--lal-border-soft');
-      monthlyProfitBarChart.options.scales.y.ticks.color = lalToken('--lal-text-faint');
+      monthlyProfitBarChart.options.scales.y.ticks.color = lalToken('--lal-text-muted');
       monthlyProfitBarChart.update('none');
       monthlyProfitBarChart.draw();
     }
