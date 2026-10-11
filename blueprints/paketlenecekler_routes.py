@@ -200,6 +200,26 @@ def _sort_key(r):
     return (due is None, due or 0, r.get("order_date_ms") or 0)
 
 
+def attach_images(rows, image_map=None):
+    """Her satıra (ln) imageUrl ekler. Görsel kaynağı product_images tablosudur
+    (Trendyol'dan senkronize edilir, SKU bazlı); Hepsiburada'daki farklı SKU
+    yazımları sku_alias ile normalize edilir. Görsel bulunamazsa imageUrl None
+    kalır, frontend placeholder gösterir. Hata sayfayı asla bozmaz."""
+    if image_map is None:
+        try:
+            from database import list_product_images
+            image_map = list_product_images()
+        except Exception:
+            logger.exception("Paketlenecekler: urun gorselleri okunamadi")
+            image_map = {}
+    from sku_alias import normalize_sku
+    for row in rows:
+        for ln in row.get("lines") or []:
+            sku = ln.get("sku") or ""
+            ln["imageUrl"] = image_map.get(sku) or image_map.get(normalize_sku(sku))
+    return rows
+
+
 def _collect(debug=False):
     core = _core()
     now = datetime.now()
@@ -237,6 +257,7 @@ def _collect(debug=False):
     except Exception as exc:
         errors["hepsiburada"] = str(exc)[:300]
 
+    attach_images(rows)
     rows.sort(key=_sort_key)
     out = {"rows": rows, "errors": errors, "generated_ms": int(time.time() * 1000)}
     if debug:

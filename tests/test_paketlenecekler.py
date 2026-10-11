@@ -46,3 +46,24 @@ def test_trendyol_created_rows():
     assert rows[0]["due_ms"] == 9
     assert rows[0]["customer"] == "A B"
     assert rows[0]["lines"][0]["qty"] == 2
+
+
+def test_attach_images_uses_sku_and_alias():
+    rows = [{"lines": [
+        {"sku": "SH-10TF-BG", "name": "A"},
+        {"sku": "RO122-8L", "name": "B"},
+        {"sku": "YOK", "name": "C"},
+        {"name": "D"},
+    ]}]
+    image_map = {"SH-10TF-BG": "http://img/a.jpg", "RO-122-8L": "http://img/b.jpg"}
+    pk.attach_images(rows, image_map)
+    got = [ln["imageUrl"] for ln in rows[0]["lines"]]
+    assert got == ["http://img/a.jpg", "http://img/b.jpg", None, None]
+
+
+def test_attach_images_survives_missing_table(monkeypatch):
+    import database
+    monkeypatch.setattr(database, "list_product_images", lambda: (_ for _ in ()).throw(RuntimeError("x")))
+    rows = [{"lines": [{"sku": "S1"}]}]
+    pk.attach_images(rows)
+    assert rows[0]["lines"][0]["imageUrl"] is None

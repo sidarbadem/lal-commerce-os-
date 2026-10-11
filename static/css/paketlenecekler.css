@@ -12,8 +12,16 @@
 .pk-mp-hb { color: var(--lal-mp-hepsiburada); background: var(--lal-mp-hepsiburada-dim); }
 .pk-state { font: var(--lal-text-micro); color: var(--lal-text-muted); }
 .pk-no { font-weight: 600; }
-.pk-lines { margin: var(--lal-space-2) 0 0; padding: 0; list-style: none; display: grid; gap: 3px; font: var(--lal-text-body); }
-.pk-lines em { color: var(--lal-text-faint); font-style: normal; font-size: 12px; }
+.pk-lines { margin: var(--lal-space-3) 0 0; padding: 0; list-style: none; display: grid; gap: var(--lal-space-3); font: var(--lal-text-body); }
+.pk-line { display: flex; align-items: center; gap: var(--lal-space-4); }
+.pk-thumb {
+  flex: none; width: 64px; height: 64px; box-sizing: border-box; object-fit: contain; padding: 4px;
+  border-radius: var(--lal-radius-lg); border: 1px solid var(--lal-border-soft);
+  background: color-mix(in srgb, white 94%, var(--lal-surface));
+}
+.pk-thumb-empty { display: flex; align-items: center; justify-content: center; background: var(--lal-surface); color: var(--lal-text-faint); font: var(--lal-text-small); }
+.pk-line-text { min-width: 0; }
+.pk-lines em { display: block; margin-top: 2px; color: var(--lal-text-faint); font: 500 12px/1.3 var(--lal-font-mono); font-style: normal; }
 .pk-qty { font-weight: 600; }
 .pk-meta { font: var(--lal-text-small); color: var(--lal-text-muted); margin-top: var(--lal-space-2); }
 .pk-actions { display: flex; gap: var(--lal-space-2); flex-wrap: wrap; margin-top: var(--lal-space-3); }

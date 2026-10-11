@@ -79,8 +79,11 @@
   }
   function card(r, idx) {
     var lines = (r.lines || []).map(function (l) {
-      return '<li><span class="pk-qty">' + esc(l.qty) + '×</span> ' + esc(l.name) +
-        (l.sku ? ' <em>' + esc(l.sku) + '</em>' : '') + '</li>';
+      var thumb = l.imageUrl
+        ? '<img class="pk-thumb" src="' + esc(l.imageUrl) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<span class=&quot;pk-thumb pk-thumb-empty&quot;>—</span>\'">'
+        : '<span class="pk-thumb pk-thumb-empty" title="Bu SKU için görsel senkronize edilmemiş">—</span>';
+      return '<li class="pk-line">' + thumb + '<span class="pk-line-text"><span class="pk-qty">' + esc(l.qty) + '×</span> ' + esc(l.name) +
+        (l.sku ? '<em>' + esc(l.sku) + '</em>' : '') + '</span></li>';
     }).join('');
     var ty = r.marketplace === 'trendyol';
     var state = r.state === 'packed' ? 'Paket hazır, kargolanacak' : 'Paketlenecek';
