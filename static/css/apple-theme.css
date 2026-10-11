@@ -114,3 +114,7 @@ tbody tr:hover { background: var(--lal-hover-wash); }
   .lal-page-intro p { grid-column: auto; }
   .lal-page-intro > span { text-align: left; }
 }
+
+a.lal-btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.lal-sidebar { scrollbar-width: none; }
+.lal-sidebar::-webkit-scrollbar { display: none; }

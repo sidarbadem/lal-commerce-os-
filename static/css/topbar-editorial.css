@@ -86,11 +86,10 @@ html[data-lal-theme] .lal-topbar .lal-btn-primary:hover:not(:disabled) { backgro
 
 html #alerts-band { font: var(--lal-text-small); }
 html #alerts-band a, html #alerts-band button {
-  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
-  text-decoration-color: color-mix(in srgb, var(--lal-text-main) 30%, transparent);
-  transition: text-decoration-color var(--lal-dur-fast) ease;
+  text-decoration: none; text-decoration-thickness: 1px; text-underline-offset: 3px;
+  transition: color var(--lal-dur-fast) ease;
 }
-html #alerts-band a:hover, html #alerts-band button:hover { text-decoration-color: var(--lal-text-main); }
+html #alerts-band a:hover, html #alerts-band button:hover { text-decoration: underline; }
 
 @media (prefers-reduced-motion: reduce) {
   .mp-thumb, .lal-dd-menu, .lal-dd-btn svg, html .lal-topbar .lal-btn-primary { transition: none !important; }
