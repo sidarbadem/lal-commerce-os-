@@ -27,6 +27,37 @@
   .greeting-hero > :not(.hero-3d) { position: relative; z-index: 1; }
   .hero-3d { position: absolute; right: 0; top: 0; width: 46%; height: 100%; pointer-events: none; z-index: 0; }
   .fx-ch { display: inline-block; font-weight: 600; }
+
+  /* Hero rakamları: Net Kazanç artık küçük bir alt satır değil, yeşil bir
+     hap (Apple Wallet tarzı); Bu Ay Toplam büyütüldü. */
+  html .hf-subrow { margin-top: var(--lal-space-3); gap: 10px; align-items: center; font-size: 15px; }
+  html .hf-sublabel { opacity: .75; }
+  html .hf-subvalue { font: 600 26px/1 var(--lal-font-display); letter-spacing: -.02em; padding: 7px 14px; border-radius: 12px; background: var(--lal-green-dim); color: var(--lal-green); }
+  html .hf-subvalue.is-danger { background: var(--lal-red-dim); color: var(--lal-red); }
+  html .hero-figure-secondary .hf-value { font-size: clamp(34px, 4.4vw, 50px); letter-spacing: -.03em; }
+
+  /* Kaydırınca beliren cam özet çubuğu (ai-stickybar.js) */
+  .ai-sb-wrap { position: sticky; top: var(--lal-topbar-h); z-index: 19; height: 0; margin-bottom: calc(-1 * var(--lal-space-5)); pointer-events: none; }
+  .ai-sb { position: absolute; top: 0; left: calc(-1 * var(--lal-space-6)); right: calc(-1 * var(--lal-space-6)); display: flex; align-items: center; gap: var(--lal-space-6); padding: 10px var(--lal-space-6) 12px; background: var(--lal-glass-bg); -webkit-backdrop-filter: saturate(1.8) blur(24px); backdrop-filter: saturate(1.8) blur(24px); border-bottom: 1px solid var(--lal-glass-border); opacity: 0; visibility: hidden; overflow: hidden; pointer-events: auto; }
+  .ai-sb-m { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ai-sb-m .l { font: var(--lal-text-micro); color: var(--lal-text-faint); text-transform: none; letter-spacing: 0; }
+  .ai-sb-m .r { display: flex; align-items: baseline; gap: 8px; }
+  .ai-sb-m .v { font: 600 22px/1.15 var(--lal-font-display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--lal-text-main); white-space: nowrap; }
+  .ai-sb-m.net .v { color: var(--lal-green); }
+  .ai-sb-chip { font: 600 11px/1 var(--lal-font-display); padding: 3px 7px; border-radius: 999px; background: var(--lal-surface); color: var(--lal-text-faint); white-space: nowrap; }
+  .ai-sb-chip.is-up { background: var(--lal-green-dim); color: var(--lal-green); }
+  .ai-sb-chip.is-down { background: var(--lal-red-dim); color: var(--lal-red); }
+  .ai-sb-chip:empty { display: none; }
+  .ai-sb-note { margin-left: auto; position: relative; padding-left: 16px; min-width: 0; max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--lal-text-small); color: var(--lal-text-main); opacity: .85; }
+  .ai-sb-note::before { content: ""; position: absolute; left: 0; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--lal-text-faint); }
+  .ai-sb-note[data-tone="down"]::before { background: var(--lal-red); }
+  .ai-sb-note[data-tone="up"]::before, .ai-sb-note[data-tone="ok"]::before { background: var(--lal-green); }
+  .ai-sb-note[data-tone="warn"]::before { background: var(--lal-amber); }
+  .ai-sb-note[data-tone="accent"]::before { background: var(--lal-accent); }
+  .ai-sb-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
+  .ai-sb-prog i { display: block; height: 100%; width: 0; background: var(--lal-green); transition: width .6s ease; }
+  @media (max-width: 1100px) { .ai-sb-note { display: none; } }
+  @media (max-width: 720px) { .ai-sb { gap: var(--lal-space-4); padding-left: var(--lal-space-4); padding-right: var(--lal-space-4); left: calc(-1 * var(--lal-space-4)); right: calc(-1 * var(--lal-space-4)); } .ai-sb-m .v { font-size: 17px; } .ai-sb-chip { display: none; } }
   @media (max-width: 1000px) { .hero-3d { display: none; } }
 
   /* Brifing satırları: önem noktası */
@@ -339,6 +370,15 @@
 {% endblock %}
 
 {% block content %}
+  <div class="ai-sb-wrap" id="ai-sb">
+    <div class="ai-sb" role="status" aria-label="Günlük özet">
+      <div class="ai-sb-m"><span class="l">Bugünkü satış</span><span class="r"><span class="v" id="sb-sales">–</span><span class="ai-sb-chip" id="sb-sales-chip"></span></span></div>
+      <div class="ai-sb-m net"><span class="l">Net kazanç</span><span class="r"><span class="v" id="sb-net">–</span><span class="ai-sb-chip" id="sb-net-chip"></span></span></div>
+      <div class="ai-sb-m"><span class="l">Bu ay toplam</span><span class="r"><span class="v" id="sb-month">–</span><span class="ai-sb-chip" id="sb-month-chip"></span></span></div>
+      <div class="ai-sb-note" id="sb-note"></div>
+      <div class="ai-sb-prog"><i id="sb-prog"></i></div>
+    </div>
+  </div>
   <div class="greeting-hero">
     <canvas class="hero-3d" id="hero-3d" aria-hidden="true"></canvas>
     <p class="hello">Hoş geldin, <strong>Sidar.</strong></p>
@@ -487,6 +527,7 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/reveal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/ai-hero-fx.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/ai-stickybar.js') }}" defer></script>
 <script>
   // =====================================================================
   // 09.08.2026 — AI Cockpit genişlemesi. Aşağıdaki yeni fonksiyonlar
