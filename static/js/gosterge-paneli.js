@@ -157,7 +157,7 @@
   // renk/etiket tanımını kullanır — tek veri kaynağı, sadece görselleştirme
   // katmanı farklı.
   let monthlyProfitChart, monthlyProfitBarChart, monthlyProfitLoaded = false;
-  let monthlyProfitView = 'trend'; // 'trend' | 'cfo'
+  let monthlyProfitView = 'table'; // 'table' | 'trend' | 'cfo'
   let monthlyProfitMonths = [];
   const LAL_CHART_FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
   const monthlyProfitTlFmt = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
@@ -464,25 +464,6 @@
     }
   }
 
-  // 14.09.2026 eklendi: aylardan biri (ya da birden fazlası) kargo faturası
-  // eksik siparişler içeriyorsa (bkz. finance_engine.monthly_profit
-  // ordersMissingCargo/incompleteData), grafik SESSİZCE düşük net kâr
-  // göstermesin diye ayrı bir rozetle açıkça belirtilir.
-  function renderMonthlyProfitMissingCargoBadge(months) {
-    const badge = document.getElementById('monthlyProfitMissingCargoBadge');
-    if (!badge) return;
-    const incomplete = months.filter(m => m.incompleteData && m.ordersMissingCargo > 0);
-    if (!incomplete.length) { badge.classList.add('is-hidden'); return; }
-    const totalMissing = incomplete.reduce((sum, m) => sum + (m.ordersMissingCargo || 0), 0);
-    const monthLabels = incomplete.map(m => {
-      const [y, mo] = m.month.split('-');
-      return new Date(y, mo - 1, 1).toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' });
-    }).join(', ');
-    badge.textContent = `${monthLabels}: ${totalMissing} sipariş kargo faturası bekliyor`;
-    badge.title = 'Bu aylardaki net kâr eksik — kargo faturası gelmeyen siparişler toplama dahil edilmedi (0 olarak uydurulmadı).';
-    badge.classList.remove('is-hidden');
-  }
-
   async function loadMonthlyProfitChart(generation = refreshGeneration) {
     if (monthlyProfitLoaded) return;
     const controller = startRequest('monthlyProfit');
@@ -503,29 +484,64 @@
     }
   }
 
-  // Aylık rakamların tam TL tablosu — grafikteki kısa etiketlere (₺46,8B)
-  // ek olarak her ayın gerçek tutarlarını okunur biçimde verir. Yeniden
-  // eskiye sıralı; devam eden ay "devam ediyor" etiketiyle işaretlenir.
+  // Aylık finansal performans TABLOSU (ana görünüm). Her ay bir satır, yeniden
+  // eskiye; tutar sütunlarında o sütunun en iyi ayına oranını gösteren sade
+  // veri çubuğu, ★ en iyi ay, altta toplam. Kargo faturası bekleyen siparişler
+  // için eskiden ayrı bir rozet vardı; artık Net Kâr başlığındaki ⓘ ipucunda.
   function renderMonthlyProfitTable(months) {
     const body = document.getElementById('monthlyProfitTableBody');
+    const foot = document.getElementById('monthlyProfitTableFoot');
     if (!body) return;
     const curIdx = monthlyProfitCurrentMonthIndex(months);
-    const rows = months.map((m, i) => {
-      const rev = m.revenue || 0;
-      const gross = m.trueGrossProfit || 0;
-      const net = monthlyProfitRealNet(m);
-      const [y, mo] = m.month.split('-');
+    const rows = months.map(m => ({
+      m,
+      rev: m.revenue || 0,
+      gross: m.trueGrossProfit || 0,
+      net: monthlyProfitRealNet(m),
+    }));
+    const max = {
+      rev: Math.max(1, ...rows.map(r => r.rev)),
+      gross: Math.max(1, ...rows.map(r => r.gross)),
+      net: Math.max(1, ...rows.map(r => r.net)),
+    };
+    const best = key => rows.reduce((b, r, i) => (r[key] > rows[b][key] ? i : b), 0);
+    const bestIdx = rows.length ? { rev: best('rev'), gross: best('gross'), net: best('net') } : {};
+    const pct = (net, rev) => (rev ? `%${((net / rev) * 100).toFixed(1).replace('.', ',')}` : '–');
+    const cell = (key, r, i) => {
+      const w = Math.max(0, r[key]) / max[key] * 100;
+      const neg = r[key] < 0 ? ' is-neg' : '';
+      const star = bestIdx[key] === i ? '<b class="mpc-star" title="En iyi ay">★</b>' : '';
+      return `<td class="mpc-td"><div class="mpc-cell ${key}" style="--w:${w.toFixed(1)}%"><span class="${neg.trim()}">${star}${monthlyProfitTlFmt.format(r[key])}</span></div></td>`;
+    };
+    body.innerHTML = rows.map((r, i) => {
+      const [y, mo] = r.m.month.split('-');
       const label = new Date(y, mo - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
-      const margin = rev ? `%${((net / rev) * 100).toFixed(1).replace('.', ',')}` : '–';
       return `<tr>
         <td>${label}${i === curIdx ? ' <span class="mpc-table-live">devam ediyor</span>' : ''}</td>
-        <td>${monthlyProfitTlFmt.format(rev)}</td>
-        <td>${monthlyProfitTlFmt.format(gross)}</td>
-        <td class="${net < 0 ? 'is-neg' : 'is-pos'}">${monthlyProfitTlFmt.format(net)}</td>
-        <td>${margin}</td>
+        ${cell('rev', r, i)}${cell('gross', r, i)}${cell('net', r, i)}
+        <td>${pct(r.net, r.rev)}</td>
       </tr>`;
-    }).reverse();
-    body.innerHTML = rows.join('');
+    }).reverse().join('');
+    if (foot) {
+      const sum = key => rows.reduce((t, r) => t + r[key], 0);
+      foot.innerHTML = `<tr><td>Toplam</td><td>${monthlyProfitTlFmt.format(sum('rev'))}</td><td>${monthlyProfitTlFmt.format(sum('gross'))}</td><td>${monthlyProfitTlFmt.format(sum('net'))}</td><td>${pct(sum('net'), sum('rev'))}</td></tr>`;
+    }
+    const hint = document.getElementById('mpcNetHint');
+    if (hint) {
+      const incomplete = months.filter(m => m.incompleteData && m.ordersMissingCargo > 0);
+      if (incomplete.length) {
+        const total = incomplete.reduce((t, m) => t + (m.ordersMissingCargo || 0), 0);
+        const names = incomplete.map(m => {
+          const [y, mo] = m.month.split('-');
+          return new Date(y, mo - 1, 1).toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' });
+        }).join(', ');
+        hint.title = `${names}: ${total} sipariş kargo faturası bekliyor. Bu aylardaki net kâr eksik — kargo faturası gelmeyen siparişler toplama dahil edilmedi (0 olarak uydurulmadı).`;
+        hint.setAttribute('aria-label', hint.title);
+        hint.classList.remove('is-hidden');
+      } else {
+        hint.classList.add('is-hidden');
+      }
+    }
     setVisible('monthlyProfitTableWrap', true);
   }
 
@@ -536,7 +552,6 @@
     monthlyProfitMonths = months;
 
     renderMonthlyProfitInProgressBadge(months);
-    renderMonthlyProfitMissingCargoBadge(months);
 
     renderMonthlyProfitLineChart(months);
     renderMonthlyProfitBarChart(months);
@@ -554,7 +569,7 @@
   // DOM/render sırası veya Chart.js instance'larının hazır olup olmaması
   // switch davranışını etkilemez.
   function setMonthlyProfitView(view) {
-    if (view !== 'trend' && view !== 'cfo') return;
+    if (view !== 'trend' && view !== 'cfo' && view !== 'table') return;
 
     monthlyProfitView = view;
 
@@ -579,6 +594,14 @@
     // Canvas state
     lineCanvas.classList.toggle('is-hidden', !isTrend);
     barCanvas.classList.toggle('is-hidden', !isCfo);
+    // Tablo görünümünde grafik alanı ve metrik seçici gizlenir.
+    const chartWrap = document.getElementById('monthlyProfitChartWrap');
+    if (chartWrap) {
+      if (view === 'table') chartWrap.classList.add('is-hidden');
+      else if (monthlyProfitMonths.length) chartWrap.classList.remove('is-hidden');
+    }
+    const metricSel = document.getElementById('monthlyProfitMetricSelector');
+    if (metricSel) metricSel.classList.toggle('is-hidden', view === 'table');
 
     // display:none'den çıkan canvas için Chart.js yeniden ölçülmeli.
     requestAnimationFrame(() => {

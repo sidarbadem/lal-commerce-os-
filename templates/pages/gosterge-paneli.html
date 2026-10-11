@@ -24,13 +24,13 @@
       <div class="mpc-head">
         <div>
           <h2>Finansal Performans</h2>
-          <p class="panel-note">Cirodan gerçek net kâra kadar aylık finansal performans. Bu grafik yukarıdaki tarih filtresinden bağımsızdır — her zaman tüm geçmişi gösterir.</p>
+          <p class="panel-note">Cirodan gerçek net kâra kadar aylık finansal performans. Bu tablo yukarıdaki tarih filtresinden bağımsızdır — her zaman tüm geçmişi gösterir.</p>
         </div>
         <div class="mpc-head-right">
           <span id="monthlyProfitInProgressBadge" class="mpc-badge is-hidden"></span>
-          <span id="monthlyProfitMissingCargoBadge" class="mpc-badge is-hidden"></span>
           <div id="monthlyProfitViewSwitch" class="mpc-view-switch" role="tablist">
-            <button type="button" class="mpc-view-switch-btn is-active" data-view="trend" role="tab" aria-selected="true">Trend Analizi</button>
+            <button type="button" class="mpc-view-switch-btn is-active" data-view="table" role="tab" aria-selected="true">Tablo</button>
+            <button type="button" class="mpc-view-switch-btn" data-view="trend" role="tab" aria-selected="false">Trend Analizi</button>
             <button type="button" class="mpc-view-switch-btn" data-view="cfo" role="tab" aria-selected="false">Finansal Özet</button>
           </div>
           <div id="monthlyProfitMetricSelector" class="mpc-selector"></div>
@@ -43,8 +43,9 @@
       </div>
       <div id="monthlyProfitTableWrap" class="mpc-table-wrap is-hidden">
         <table class="mpc-table">
-          <thead><tr><th>Ay</th><th>Ciro</th><th>Brüt Kâr</th><th>Net Kâr</th><th>Net Marj</th></tr></thead>
+          <thead><tr><th>Ay</th><th><i class="mpc-dot rev"></i>Ciro</th><th><i class="mpc-dot gross"></i>Brüt Kâr</th><th><i class="mpc-dot net"></i>Net Kâr <span id="mpcNetHint" class="mpc-info is-hidden" tabindex="0" title="">ⓘ</span></th><th>Net Marj</th></tr></thead>
           <tbody id="monthlyProfitTableBody"></tbody>
+          <tfoot id="monthlyProfitTableFoot"></tfoot>
         </table>
       </div>
     </div>
