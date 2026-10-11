@@ -39,3 +39,5 @@ analiz_ciktisi2.txt
 *.bak_qna_beat_*
 
 *.db.bak*
+__pycache__/
+*.pyc
