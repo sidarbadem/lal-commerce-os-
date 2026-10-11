@@ -1,0 +1,29 @@
+.manual-dialog {
+  width: min(760px, 94vw); padding: 0; color: var(--lal-text-main);
+  background: var(--lal-glass-bg); -webkit-backdrop-filter: var(--lal-glass-filter); backdrop-filter: var(--lal-glass-filter);
+  border: 1px solid var(--lal-glass-border); border-radius: var(--lal-radius-xl); box-shadow: var(--lal-shadow-3);
+}
+.manual-dialog::backdrop { background: var(--lal-scrim); }
+.manual-dialog-body { padding: var(--lal-space-6); display: grid; gap: var(--lal-space-4); max-height: 88vh; overflow-y: auto; }
+.manual-dialog h3 { margin: 0; font: var(--lal-text-h1); }
+.manual-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--lal-space-3); }
+.manual-field { display: grid; gap: var(--lal-space-1); font: var(--lal-text-micro); color: var(--lal-text-muted); }
+.manual-dialog input, .manual-dialog select { width: 100%; box-sizing: border-box; padding: 8px 10px; color: var(--lal-text-main); font: var(--lal-text-small); }
+.manual-item-row { display: grid; grid-template-columns: minmax(0, 2fr) 70px 130px 130px 36px; gap: var(--lal-space-2); align-items: center; margin-bottom: var(--lal-space-2); }
+.manual-item-row .mi-cost { font: var(--lal-text-micro); color: var(--lal-text-muted); }
+.manual-comm { display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: var(--lal-space-2); }
+.manual-preview {
+  display: flex; gap: var(--lal-space-5); flex-wrap: wrap; padding: var(--lal-space-3) var(--lal-space-4);
+  background: var(--lal-surface-2); border: 1px solid var(--lal-border-soft); border-radius: var(--lal-radius-lg); font: var(--lal-text-small);
+}
+.manual-preview b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.manual-actions { display: flex; justify-content: flex-end; gap: var(--lal-space-2); }
+.manual-error { color: var(--lal-red); font: var(--lal-text-small); min-height: 1em; margin: 0; }
+.manual-label { margin-bottom: var(--lal-space-2); }
+
+.manual-detail-sums { display: flex; gap: var(--lal-space-5); flex-wrap: wrap; margin-top: var(--lal-space-3); font: var(--lal-text-small); color: var(--lal-text-muted); }
+.manual-detail-sums b { color: var(--lal-text-main); font-weight: 600; font-variant-numeric: tabular-nums; }
+.manual-detail-note { margin-top: var(--lal-space-2); font: var(--lal-text-small); color: var(--lal-text-muted); }
+.manual-detail-actions { margin-top: var(--lal-space-3); display: flex; gap: var(--lal-space-2); }
+
+@media (max-width: 640px) { .manual-grid { grid-template-columns: 1fr; } .manual-item-row { grid-template-columns: 1fr 70px 1fr; } }

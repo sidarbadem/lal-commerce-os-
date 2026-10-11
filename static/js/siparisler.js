@@ -152,13 +152,13 @@
         <td>${fmtTL2(it.unitPrice)}</td>
         <td>${fmtTL2(it.unitCost)}</td>
       </tr>`).join('');
-    const note = o.notes ? `<div style="margin-top:8px;font-size:12.5px;color:var(--text-muted);">Not: ${escHtml(o.notes)}</div>` : '';
+    const note = o.notes ? `<div class="manual-detail-note">Not: ${escHtml(o.notes)}</div>` : '';
     return `
       <table>
         <thead><tr><th>SKU</th><th>Ürün</th><th>Adet</th><th>Birim Satış</th><th>Birim Maliyet</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--text-muted);">
+      <div class="manual-detail-sums">
         <span>Satış: <b>${fmtTL2(o.saleTotal)}</b></span>
         <span>Maliyet: <b>${fmtTL2(o.cogsTotal)}</b></span>
         <span>Komisyon: <b>${fmtTL2(o.commission)}</b></span>
@@ -166,7 +166,7 @@
         <span>Net kâr: <b>${fmtTL2(o.netProfit)}</b></span>
       </div>
       ${note}
-      <div style="margin-top:10px;display:flex;gap:8px;">
+      <div class="manual-detail-actions">
         <button class="lal-btn lal-btn-secondary" type="button" data-manual-edit="${o.manualId}">Düzenle</button>
         <button class="lal-btn lal-btn-secondary" type="button" data-manual-delete="${o.manualId}">Sil</button>
       </div>`;
