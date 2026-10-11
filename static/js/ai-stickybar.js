@@ -44,6 +44,22 @@
     n.setAttribute('data-tone', tone);
   });
 
+  // Çubuk, sayfa dolgusundan bağımsız olarak ana alanın kenarından kenarına
+  // uzansın: wrap ile .lal-main arasındaki gerçek mesafe ölçülür.
+  function fit() {
+    var main = document.querySelector('.lal-main');
+    if (!main) return;
+    var w = wrap.getBoundingClientRect(), m = main.getBoundingClientRect();
+    var l = w.left - m.left, r = m.right - w.right;
+    bar.style.setProperty('--sb-l', (-l) + 'px');
+    bar.style.setProperty('--sb-r', (-r) + 'px');
+    bar.style.setProperty('--sb-pad', Math.max(l, 16) + 'px');
+  }
+  fit();
+  window.addEventListener('resize', fit);
+  document.addEventListener('lal:sidebar-toggle', fit);
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(wrap);
+
   var ticking = false;
   function topH() {
     return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lal-topbar-h')) || 56;
