@@ -3,7 +3,9 @@
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   var IDS = ['stat-net-profit', 'stat-gross-revenue', 'stat-revenue', 'stat-gross-profit',
     'today-order-count', 'stat-orders', 'stat-avg-margin', 'stat-commission', 'stat-service-fee',
-    'stat-stoppage', 'stat-platform-fee', 'stat-cash-advance', 'stat-return', 'stat-payment-order'];
+    'stat-stoppage', 'stat-platform-fee', 'stat-cash-advance', 'stat-return', 'stat-payment-order',
+    'hero-today-sales', 'hero-month-sales', 'hero-today-net-profit',
+    'ai2-kpi-sales-value', 'ai2-kpi-profit-value', 'ai2-kpi-orders-value', 'ai2-kpi-margin-value'];
 
   function parse(t) {
     var m = String(t).trim().match(/^(-?)(₺?)\s*(-?)([\d.,]+)\s*(%?)$/);

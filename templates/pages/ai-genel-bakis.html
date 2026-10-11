@@ -21,6 +21,22 @@
     font-weight: 600;
   }
 
+  /* AI Genel Bakış hero efektleri (ai-hero-fx.js): kinetik karşılama +
+     son 7 günü gösteren tel kafes 3D çubuklar. Renkler token'dan okunur. */
+  .greeting-hero { position: relative; }
+  .greeting-hero > :not(.hero-3d) { position: relative; z-index: 1; }
+  .hero-3d { position: absolute; right: 0; top: 0; width: 46%; height: 100%; pointer-events: none; z-index: 0; }
+  .fx-ch { display: inline-block; font-weight: 600; }
+  @media (max-width: 1000px) { .hero-3d { display: none; } }
+
+  /* Brifing satırları: önem noktası */
+  .ai2-brief-line { position: relative; padding-left: 18px; }
+  .ai2-brief-line::before { content: ""; position: absolute; left: 0; top: .6em; width: 8px; height: 8px; border-radius: 50%; background: var(--lal-text-faint); }
+  .ai2-brief-line.tone-down::before { background: var(--lal-red); }
+  .ai2-brief-line.tone-up::before, .ai2-brief-line.tone-ok::before { background: var(--lal-green); }
+  .ai2-brief-line.tone-warn::before { background: var(--lal-amber); }
+  .ai2-brief-line.tone-accent::before { background: var(--lal-accent); }
+
   /* =====================================================================
      AI COCKPIT GENİŞLEMESİ (09.08.2026)
      ---------------------------------------------------------------------
@@ -324,6 +340,7 @@
 
 {% block content %}
   <div class="greeting-hero">
+    <canvas class="hero-3d" id="hero-3d" aria-hidden="true"></canvas>
     <p class="hello">Hoş geldin, <strong>Sidar.</strong></p>
     <div class="hero-figures">
       <div class="hero-figure-primary">
@@ -469,6 +486,7 @@
 
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/reveal.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/ai-hero-fx.js') }}" defer></script>
 <script>
   // =====================================================================
   // 09.08.2026 — AI Cockpit genişlemesi. Aşağıdaki yeni fonksiyonlar
@@ -1035,22 +1053,22 @@
     var salesTrendText = document.getElementById('ai2-kpi-sales-trend');
     if (salesTrendText && salesTrendText.textContent && salesTrendText.textContent !== '–') {
       var isDownSales = salesTrendText.classList.contains('is-down');
-      parts.push('Bugünkü satış 7 günlük ortalama' + (isDownSales ? 'nın altında' : 'nın üzerinde') + ' (' + salesTrendText.textContent + ').');
+      parts.push({ t: 'Bugünkü satış 7 günlük ortalama' + (isDownSales ? 'nın altında' : 'nın üzerinde') + ' (' + salesTrendText.textContent + ').', tone: isDownSales ? 'down' : 'up' });
     }
 
     var anomalyReasons = document.querySelectorAll('#ai2-anomaly-body .ai2-reason-list li');
     if (anomalyReasons.length) {
-      parts.push('Olası neden: ' + anomalyReasons[0].textContent);
+      parts.push({ t: 'Olası neden: ' + anomalyReasons[0].textContent, tone: 'warn' });
     }
 
     if (window.__ai2CashflowTotal) {
-      parts.push('Önümüzdeki 14 günde toplam ' + fmtTL(window.__ai2CashflowTotal) + ' tahsilat bekleniyor.');
+      parts.push({ t: 'Önümüzdeki 14 günde toplam ' + fmtTL(window.__ai2CashflowTotal) + ' tahsilat bekleniyor.', tone: 'ok' });
     }
 
     if (lastOpportunities && lastOpportunities.length) {
       var top = lastOpportunities[0];
       var marginPct = (top.margin !== null && top.margin !== undefined) ? Math.round(top.margin * 100) : null;
-      parts.push('En önemli fırsat: ' + (top.sku || '') + (marginPct !== null ? (' (%' + marginPct + ' marj)') : '') + '.');
+      parts.push({ t: 'En önemli fırsat: ' + (top.sku || '') + (marginPct !== null ? (' (%' + marginPct + ' marj)') : '') + '.', tone: 'accent' });
     }
 
     var el = document.getElementById('ai2-briefing-text');
@@ -1059,8 +1077,8 @@
       if (!parts.length) { el.textContent = 'Brifing için henüz yeterli veri yok.'; }
       else parts.forEach(function (t) {
         var d = document.createElement('div');
-        d.className = 'ai2-brief-line';
-        d.textContent = t;
+        d.className = 'ai2-brief-line tone-' + t.tone;
+        d.textContent = t.t;
         el.appendChild(d);
       });
     }
