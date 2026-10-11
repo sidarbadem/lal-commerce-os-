@@ -35,6 +35,8 @@
   html .hf-subvalue { font: 600 26px/1 var(--lal-font-display); letter-spacing: -.02em; padding: 7px 14px; border-radius: 12px; background: var(--lal-green-dim); color: var(--lal-green); }
   html .hf-subvalue.is-danger { background: var(--lal-red-dim); color: var(--lal-red); }
   html .hero-figure-secondary .hf-value { font-size: clamp(34px, 4.4vw, 50px); letter-spacing: -.03em; }
+  html .hero-figure-secondary .hf-label { text-align: left; }
+  html .hf-subrow { border-left: 0; padding-left: 0; }
 
   /* Kaydırınca beliren cam özet çubuğu (ai-stickybar.js) */
   .ai-sb-wrap { position: sticky; top: var(--lal-topbar-h); z-index: 19; height: 0; margin-bottom: calc(-1 * var(--lal-space-5)); pointer-events: none; }
@@ -53,7 +55,7 @@
   .ai-sb-note[data-tone="down"]::before { background: var(--lal-red); }
   .ai-sb-note[data-tone="up"]::before, .ai-sb-note[data-tone="ok"]::before { background: var(--lal-green); }
   .ai-sb-note[data-tone="warn"]::before { background: var(--lal-amber); }
-  .ai-sb-note[data-tone="accent"]::before { background: var(--lal-accent); }
+  .ai-sb-note[data-tone="accent"]::before { background: #0a84ff; }
   .ai-sb-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
   .ai-sb-prog i { display: block; height: 100%; width: 0; background: var(--lal-green); transition: width .6s ease; }
   @media (max-width: 1100px) { .ai-sb-note { display: none; } }
@@ -66,7 +68,7 @@
   .ai2-brief-line.tone-down::before { background: var(--lal-red); }
   .ai2-brief-line.tone-up::before, .ai2-brief-line.tone-ok::before { background: var(--lal-green); }
   .ai2-brief-line.tone-warn::before { background: var(--lal-amber); }
-  .ai2-brief-line.tone-accent::before { background: var(--lal-accent); }
+  .ai2-brief-line.tone-accent::before { background: #0a84ff; }
 
   /* =====================================================================
      AI COCKPIT GENİŞLEMESİ (09.08.2026)

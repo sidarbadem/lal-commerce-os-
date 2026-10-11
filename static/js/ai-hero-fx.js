@@ -65,7 +65,7 @@
     var ac = cs.getPropertyValue('--lal-accent').trim() || '#a92639';
     var mu = cs.getPropertyValue('--lal-text-faint').trim() || '#999';
     var top = hero.getBoundingClientRect().top;
-    var ang = 0.55 + (RM ? 0 : (now - t0) / 1000 * 0.06) + (-top) / 520;
+    var ang = 0.45 + (RM ? 0 : Math.sin((now - t0) / 1000 * 0.35) * 0.45) + clamp(-top / 600) * 0.35;
     var tilt = 0.55, sc = Math.min(W / 640, H / 330), fov = 900;
     var grow = RM ? 1 : 1 - Math.pow(1 - clamp((now - t0) / 1400), 3);
     var max = Math.max.apply(null, vals.concat([1]));
