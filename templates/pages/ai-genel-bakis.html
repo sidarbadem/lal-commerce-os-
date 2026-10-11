@@ -24,8 +24,26 @@
   /* AI Genel Bakış hero efektleri (ai-hero-fx.js): kinetik karşılama +
      son 7 günü gösteren tel kafes 3D çubuklar. Renkler token'dan okunur. */
   .greeting-hero { position: relative; }
-  .greeting-hero > :not(.hero-3d) { position: relative; z-index: 1; }
-  .hero-3d { position: absolute; right: 0; top: 0; width: 46%; height: 100%; pointer-events: none; z-index: 0; }
+  .greeting-hero > :not(.ai-aurora) { position: relative; z-index: 1; }
+
+  /* Pastel aurora (günün performansına göre renk değiştirir) + cam grafik */
+  .greeting-hero.ai-dn { --ai-a1: #ecd3bd; --ai-a2: #ebc3c8; --ai-a3: #d6cdea; --ai-lc: #c4574f; }
+  .greeting-hero.ai-up { --ai-a1: #c6e0cf; --ai-a2: #c2d6ec; --ai-a3: #dbe8d4; --ai-lc: #3a9b64; }
+  html:not([data-lal-theme="light"]) .greeting-hero.ai-dn { --ai-a1: #6a4d3d; --ai-a2: #6b404b; --ai-a3: #4b4568; --ai-lc: #e0746c; }
+  html:not([data-lal-theme="light"]) .greeting-hero.ai-up { --ai-a1: #2f5a43; --ai-a2: #2f4d6b; --ai-a3: #3f5c5a; --ai-lc: #5fbf8a; }
+  .ai-aurora { position: absolute; inset: -40px -60px 0 -60px; z-index: 0; pointer-events: none; overflow: hidden; -webkit-mask-image: radial-gradient(ellipse at 55% 45%, #000 35%, transparent 78%); mask-image: radial-gradient(ellipse at 55% 45%, #000 35%, transparent 78%); }
+  .ai-blob { position: absolute; width: 520px; height: 520px; max-width: 60vw; max-height: 60vw; border-radius: 50%; filter: blur(90px); opacity: .75; transition: background 1.2s; animation: aiDrift 24s ease-in-out infinite alternate; }
+  .ai-blob.b1 { left: 46%; top: -18%; background: var(--ai-a1); }
+  .ai-blob.b2 { left: 62%; top: 22%; background: var(--ai-a2); animation-delay: -8s; }
+  .ai-blob.b3 { left: 18%; top: 46%; background: var(--ai-a3); animation-delay: -14s; }
+  @keyframes aiDrift { to { transform: translate(40px, -24px) scale(1.12); } }
+  @media (prefers-reduced-motion: reduce) { .ai-blob { animation: none; } }
+  .ai-chart { margin-top: var(--lal-space-6); padding: 16px 16px 6px; text-align: left; border-radius: 26px; background: color-mix(in srgb, var(--lal-surface) 66%, transparent); border: 1px solid color-mix(in srgb, var(--lal-text-main) 8%, transparent); box-shadow: 0 10px 40px -12px rgba(0, 0, 0, .14); -webkit-backdrop-filter: blur(26px) saturate(1.8); backdrop-filter: blur(26px) saturate(1.8); }
+  .ai-chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 0 4px 6px; }
+  .ai-chart-head b { font: 600 15px/1.3 var(--lal-font-display); color: var(--lal-text-main); }
+  .ai-chart-chip { font: 600 13px/1.3 var(--lal-font-display); color: var(--ai-lc); }
+  .ai-chart-cv { position: relative; height: clamp(180px, 24vh, 240px); }
+  .ai-chart-cv canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .fx-ch { display: inline-block; font-weight: 600; }
 
   /* Hero rakamları: Net Kazanç artık küçük bir alt satır değil, yeşil bir
@@ -60,7 +78,6 @@
   .ai-sb-prog i { display: block; height: 100%; width: 0; background: var(--lal-green); transition: width .6s ease; }
   @media (max-width: 1100px) { .ai-sb-note { display: none; } }
   @media (max-width: 720px) { .ai-sb { gap: var(--lal-space-4); } .ai-sb-m .v { font-size: 17px; } .ai-sb-chip { display: none; } }
-  @media (max-width: 1000px) { .hero-3d { display: none; } }
 
   /* Brifing satırları: önem noktası */
   .ai2-brief-line { position: relative; padding-left: 18px; }
@@ -381,8 +398,8 @@
       <div class="ai-sb-prog"><i id="sb-prog"></i></div>
     </div>
   </div>
-  <div class="greeting-hero">
-    <canvas class="hero-3d" id="hero-3d" aria-hidden="true"></canvas>
+  <div class="greeting-hero ai-dn">
+    <div class="ai-aurora" aria-hidden="true"><i class="ai-blob b1"></i><i class="ai-blob b2"></i><i class="ai-blob b3"></i></div>
     <p class="hello">Hoş geldin, <strong>Sidar.</strong></p>
     <div class="hero-figures">
       <div class="hero-figure-primary">
@@ -401,6 +418,10 @@
         <div class="hf-label">Bu Ay Toplam</div>
         <div class="hf-value" id="hero-month-sales">–</div>
       </div>
+    </div>
+    <div class="ai-chart" role="img" aria-label="Son 30 günün günlük satış grafiği">
+      <div class="ai-chart-head"><b>Son 30 gün · günlük satış</b><span class="ai-chart-chip" id="ai-chart-chip"></span></div>
+      <div class="ai-chart-cv"><canvas id="ai-chart-cv"></canvas></div>
     </div>
   </div>
 
@@ -529,6 +550,7 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/reveal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/ai-hero-fx.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/ai-hero-chart.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/ai-stickybar.js') }}" defer></script>
 <script>
   // =====================================================================
