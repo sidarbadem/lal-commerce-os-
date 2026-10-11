@@ -503,15 +503,36 @@
   // ---------------------------------------------------------------------
   var lastKnownNetProfit = null;
 
+  // Hero ve KPI kartı "Bugünkü Satış"ı AYNI kaynaktan (/api/daily-sales
+  // net_amount) okusun diye tek, önbellekli çağrı. Her yüklemede sıfırlanır.
+  var dailySalesCache = {};
+  function getDailySales(mp) {
+    mp = mp || 'all';
+    if (!dailySalesCache[mp]) {
+      dailySalesCache[mp] = fetch('/api/daily-sales?full_history=true&marketplace=' + mp)
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.error || !data.daily) return null;
+          var map = {};
+          data.daily.forEach(function (d) { map[(d.date || '').slice(0, 10)] = d.net_amount || 0; });
+          return { daily: data.daily, map: map };
+        })
+        .catch(function () { return null; });
+    }
+    return dailySalesCache[mp];
+  }
+
   function loadHeroSales() {
+    dailySalesCache = {};
     var todayEl = document.getElementById('hero-today-sales');
     var monthEl = document.getElementById('hero-month-sales');
     if (todayEl && monthEl) {
-      fetch('/api/daily-sales?full_history=true&marketplace=all')
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data.error || !data.daily) { todayEl.textContent = '—'; monthEl.textContent = '—'; return; }
-          var daily = data.daily;
+      getDailySales('all')
+        .then(function (res) {
+          if (!res) { todayEl.textContent = '—'; monthEl.textContent = '—'; return; }
+          var daily = res.daily;
+          window.__lalDailySales = daily;
+          document.dispatchEvent(new CustomEvent('lal:daily-sales', { detail: daily }));
           var now = new Date();
           var todayStr = localDateStr(now);
           var monthPrefix = todayStr.slice(0, 7);
@@ -578,9 +599,12 @@
 
   function loadKpiAndAnomaly() {
     var qs = 'days=8&marketplace=' + ai2Mp() + '&lines_page_size=5000';
-    fetch('/api/dashboard-summary?' + qs)
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
+    Promise.all([
+      fetch('/api/dashboard-summary?' + qs).then(function (r) { return r.json(); }),
+      getDailySales(ai2Mp())
+    ])
+      .then(function (res) {
+        var data = res[0], ds = res[1];
         if (data.error || !data.lines) {
           ['sales', 'orders', 'margin'].forEach(function (k) {
             safeText('ai2-kpi-' + k + '-value', '–');
@@ -614,12 +638,21 @@
         var avgMargin = (avgRevenue && avgRevenue > 0) ? (avgNetApprox / avgRevenue) * 100 : null;
 
         // --- KPI kartları ---
-        safeText('ai2-kpi-sales-value', fmtTL(todayRevenue));
-        var salesPct = avgRevenue ? ((todayRevenue - avgRevenue) / avgRevenue) * 100 : null;
+        // "Bugünkü Satış": hero ile aynı kaynak (daily-sales net_amount).
+        // daily-sales alınamazsa eski satır-bazlı değere düşer.
+        var salesToday = todayRevenue, salesAvg = avgRevenue;
+        if (ds) {
+          salesToday = ds.map[todayKey] || 0;
+          salesAvg = prevDays.length
+            ? prevDays.reduce(function (s, d) { return s + (ds.map[d] || 0); }, 0) / prevDays.length
+            : null;
+        }
+        safeText('ai2-kpi-sales-value', fmtTL(salesToday));
+        var salesPct = salesAvg ? ((salesToday - salesAvg) / salesAvg) * 100 : null;
         var salesTrendEl = document.getElementById('ai2-kpi-sales-trend');
         salesTrendEl.textContent = pctStr(salesPct);
         salesTrendEl.className = 'ai2-kpi-trend ' + trendClass(salesPct);
-        safeText('ai2-kpi-sales-avg', '7 gün ort. ' + (avgRevenue !== null ? fmtTL(avgRevenue) : '–'));
+        safeText('ai2-kpi-sales-avg', '7 gün ort. ' + (salesAvg !== null ? fmtTL(salesAvg) : '–'));
 
         // Net Kazanç kartı: gerçek (hero) değer varsa onu kullan, trend için yaklaşık avg
         var profitValueForTrend = (lastKnownNetProfit !== null) ? lastKnownNetProfit : todayNetApprox;
