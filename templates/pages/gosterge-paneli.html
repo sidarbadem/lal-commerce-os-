@@ -19,37 +19,6 @@
       <span>Mağazan sağlam ilerliyor. Bugün odaklanman gereken iki hareket var.</span>
     </section>
 
-    <!-- === FİNANSAL PERFORMANS (en önemli grafik, sayfanın en üstünde) === -->
-    <div class="panel mpc-panel">
-      <div class="mpc-head">
-        <div>
-          <h2>Finansal Performans</h2>
-          <p class="panel-note">Cirodan gerçek net kâra kadar aylık finansal performans. Bu tablo yukarıdaki tarih filtresinden bağımsızdır — her zaman tüm geçmişi gösterir.</p>
-        </div>
-        <div class="mpc-head-right">
-          <span id="monthlyProfitInProgressBadge" class="mpc-badge is-hidden"></span>
-          <div id="monthlyProfitViewSwitch" class="mpc-view-switch" role="tablist">
-            <button type="button" class="mpc-view-switch-btn is-active" data-view="table" role="tab" aria-selected="true">Tablo</button>
-            <button type="button" class="mpc-view-switch-btn" data-view="trend" role="tab" aria-selected="false">Trend Analizi</button>
-            <button type="button" class="mpc-view-switch-btn" data-view="cfo" role="tab" aria-selected="false">Finansal Özet</button>
-          </div>
-          <div id="monthlyProfitMetricSelector" class="mpc-selector"></div>
-        </div>
-      </div>
-      <div id="monthly-loading" class="loading loading-sm">Yükleniyor…</div>
-      <div id="monthlyProfitChartWrap" class="mpc-chart-wrap is-hidden">
-        <canvas id="monthlyProfitChart"></canvas>
-        <canvas id="monthlyProfitBarChart" class="is-hidden"></canvas>
-      </div>
-      <div id="monthlyProfitTableWrap" class="mpc-table-wrap is-hidden">
-        <table class="mpc-table">
-          <thead><tr><th>Ay</th><th><i class="mpc-dot rev"></i>Ciro</th><th><i class="mpc-dot gross"></i>Brüt Kâr</th><th><i class="mpc-dot net"></i>Net Kâr <span id="mpcNetHint" class="mpc-info is-hidden" tabindex="0" title="">ⓘ</span></th><th>Net Marj</th></tr></thead>
-          <tbody id="monthlyProfitTableBody"></tbody>
-          <tfoot id="monthlyProfitTableFoot"></tfoot>
-        </table>
-      </div>
-    </div>
-
     <h2 class="lal-section-title">Dönem özeti</h2>
     <div class="hero-row">
       <div class="hero-stat" id="net-profit-hero">
@@ -95,6 +64,36 @@
       <div class="card"><div class="label">İade Tutarı <span class="hint" title="Net Kâr'dan düşülmüştür">ⓘ</span></div><div class="value red" id="stat-return">–</div><div class="sub-note" id="stat-return-count"></div></div>
       <div class="card"><div class="label">Dönem İçi Hakediş Ödemesi <span class="hint" title="Kasaya bu dönem içinde fiilen geçen tutar">ⓘ</span></div><div class="value" id="stat-payment-order">–</div></div>
     </div>
+
+    <!-- === FİNANSAL PERFORMANS (en önemli grafik, sayfanın en üstünde) === -->
+    <div class="panel mpc-panel">
+      <div class="mpc-head">
+        <div>
+          <h2>Finansal Performans</h2>
+          <p class="panel-note">Cirodan gerçek net kâra kadar aylık finansal performans. Bu grafik yukarıdaki tarih filtresinden bağımsızdır — her zaman tüm geçmişi gösterir.</p>
+        </div>
+        <div class="mpc-head-right">
+          <span id="monthlyProfitInProgressBadge" class="mpc-badge is-hidden"></span>
+          <div id="monthlyProfitViewSwitch" class="mpc-view-switch" role="tablist">
+            <button type="button" class="mpc-view-switch-btn is-active" data-view="cfo" role="tab" aria-selected="true">Sütun</button>
+            <button type="button" class="mpc-view-switch-btn" data-view="trend" role="tab" aria-selected="false">Trend</button>
+          </div>
+          <div id="monthlyProfitMetricSelector" class="mpc-selector"></div>
+        </div>
+      </div>
+      <div id="monthly-loading" class="loading loading-sm">Yükleniyor…</div>
+      <div id="monthlyProfitChartWrap" class="mpc-chart-wrap is-hidden">
+        <canvas id="monthlyProfitChart"></canvas>
+        <canvas id="monthlyProfitBarChart" class="is-hidden"></canvas>
+      </div>
+      <div id="monthlyProfitTableWrap" class="mpc-table-wrap is-hidden">
+        <table class="mpc-table">
+          <thead><tr><th>Ay</th><th>Ciro</th><th>Brüt Kâr</th><th>Net Kâr <span id="mpcNetHint" class="mpc-info is-hidden" tabindex="0" title="">ⓘ</span></th><th>Net Marj</th></tr></thead>
+          <tbody id="monthlyProfitTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 
   <!-- === DETAYLI GRAFİKLER (Faz 5: artık accordion değil, sayfanın sabit bir bölümü) === -->

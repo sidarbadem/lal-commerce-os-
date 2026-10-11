@@ -208,26 +208,4 @@
   backdrop-filter: blur(14px) saturate(1.4);
   border: 1px solid color-mix(in srgb, var(--lal-border-soft) 70%, transparent);
 }
-
-
-/* ---------- Tablo görünümü (ana görünüm): veri çubuklu aylık performans ----------
-   Apple sistem renkleri: ciro mavi, brüt kâr turuncu, net kâr yeşil. */
-.mpc-table { --mpc-rev: #0A84FF; --mpc-gross: #FF9F0A; --mpc-net: #30D158; }
-html[data-lal-theme="light"] .mpc-table { --mpc-rev: #007AFF; --mpc-gross: #FF9500; --mpc-net: #34C759; }
-.mpc-table-wrap { max-height: none; }
-.mpc-table tbody td { height: 50px; }
-.mpc-table td.mpc-td { padding: 0 var(--lal-space-4); }
-.mpc-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; vertical-align: 1px; }
-.mpc-dot.rev { background: var(--mpc-rev); }
-.mpc-dot.gross { background: var(--mpc-gross); }
-.mpc-dot.net { background: var(--mpc-net); }
-.mpc-cell { position: relative; padding: 14px 0; text-align: right; }
-.mpc-cell::before { content: ""; position: absolute; left: 0; top: 22%; bottom: 22%; width: var(--w); min-width: 4px; border-radius: 8px; background: color-mix(in srgb, var(--mpc-bc) 26%, transparent); }
-.mpc-cell.rev { --mpc-bc: var(--mpc-rev); }
-.mpc-cell.gross { --mpc-bc: var(--mpc-gross); }
-.mpc-cell.net { --mpc-bc: var(--mpc-net); }
-.mpc-cell span { position: relative; }
-.mpc-cell span.is-neg { color: var(--lal-red); font-weight: 600; }
-.mpc-star { margin-right: 4px; font-size: 11px; color: var(--mpc-gross); }
 .mpc-info { margin-left: 4px; color: var(--lal-text-faint); cursor: help; }
-.mpc-table tfoot td { position: sticky; bottom: 0; background: var(--lal-surface-2); font-weight: 650; border-top: 1px solid var(--lal-border-soft); border-bottom: 0; }

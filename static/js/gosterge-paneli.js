@@ -157,7 +157,7 @@
   // renk/etiket tanımını kullanır — tek veri kaynağı, sadece görselleştirme
   // katmanı farklı.
   let monthlyProfitChart, monthlyProfitBarChart, monthlyProfitLoaded = false;
-  let monthlyProfitView = 'table'; // 'table' | 'trend' | 'cfo'
+  let monthlyProfitView = 'cfo'; // 'cfo' (klasik sütun) | 'trend'
   let monthlyProfitMonths = [];
   const LAL_CHART_FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
   const monthlyProfitTlFmt = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
@@ -211,44 +211,6 @@
     return (r * 299 + g * 587 + b * 114) / 1000 > 150;
   }
 
-  function monthlyProfitGlassFill(context, color) {
-    const light = lalIsLightTheme();
-    const bar = context.element;
-    if (!bar || !context.chart.chartArea) return lalAlpha(color, 0.3);
-    const p = bar.getProps(['y', 'base'], true);
-    if (!isFinite(p.y) || !isFinite(p.base) || p.y === p.base) return lalAlpha(color, 0.3);
-    const g = context.chart.ctx.createLinearGradient(0, p.y, 0, p.base);
-    g.addColorStop(0, lalAlpha(color, light ? 0.62 : 0.68));
-    g.addColorStop(1, lalAlpha(color, light ? 0.12 : 0.1));
-    return g;
-  }
-
-  const monthlyProfitGlassHighlight = {
-    id: 'mpcGlassHighlight',
-    afterDatasetsDraw(chart) {
-      const ctx = chart.ctx;
-      const light = lalIsLightTheme();
-      ctx.save();
-      ctx.strokeStyle = light ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.5)';
-      ctx.lineWidth = 1;
-      ctx.lineCap = 'round';
-      chart.data.datasets.forEach((ds, di) => {
-        if (!chart.isDatasetVisible(di)) return;
-        chart.getDatasetMeta(di).data.forEach((bar, i) => {
-          if (!ds.data[i] || ds.data[i] < 0) return;
-          const p = bar.getProps(['x', 'y', 'base', 'width'], true);
-          if (p.base - p.y < 8) return;
-          const inset = Math.min(5, p.width / 3);
-          ctx.beginPath();
-          ctx.moveTo(p.x - p.width / 2 + inset, p.y + 1.5);
-          ctx.lineTo(p.x + p.width / 2 - inset, p.y + 1.5);
-          ctx.stroke();
-        });
-      });
-      ctx.restore();
-    },
-  };
-
   // Görsel hiyerarşi (sadeleştirilmiş): Ciro en ince/en nötr arka plan
   // referansı — Brüt Kâr ikincil — Net Kâr (= "gerçek net kâr", panelin tek
   // "net kâr" tanımı) tek ve en güçlü vurgu, altı dolgulu.
@@ -267,9 +229,9 @@
   // --lal-green kullanılıyor (LAL'in 3 semantik renginden biri).
   function monthlyProfitMetrics() {
     return [
-      { key: 'revenue', label: 'Ciro', width: 1.25, dash: [], pointStyle: 'circle', fill: false, color: () => lalToken('--lal-text-faint') },
-      { key: 'grossProfit', label: 'Brüt Kâr', width: 2, dash: [5, 4], pointStyle: 'circle', fill: false, color: () => lalToken('--lal-amber') },
-      { key: 'netProfit', label: 'Net Kâr', width: 2.75, dash: [], pointStyle: 'circle', fill: true, color: () => lalToken('--lal-green') },
+      { key: 'revenue', label: 'Ciro', width: 1.75, dash: [], pointStyle: 'circle', fill: false, color: () => (lalIsLightTheme() ? '#007AFF' : '#0A84FF') },
+      { key: 'grossProfit', label: 'Brüt Kâr', width: 2, dash: [5, 4], pointStyle: 'circle', fill: false, color: () => (lalIsLightTheme() ? '#FF9500' : '#FF9F0A') },
+      { key: 'netProfit', label: 'Net Kâr', width: 2.75, dash: [], pointStyle: 'circle', fill: true, color: () => (lalIsLightTheme() ? '#34C759' : '#30D158') },
     ];
   }
 
@@ -333,7 +295,7 @@
       const ctx = chart.ctx;
       const zeroY = chart.scales.y.getPixelForValue(0);
       ctx.save();
-      ctx.font = `600 12.5px ${LAL_CHART_FONT}`;
+      ctx.font = `600 11.5px ${LAL_CHART_FONT}`;
       ctx.textAlign = 'center';
       ctx.fillStyle = monthlyProfitValueLabelColor();
       chart.data.datasets.forEach((ds, dsIndex) => {
@@ -484,48 +446,31 @@
     }
   }
 
-  // Aylık finansal performans TABLOSU (ana görünüm). Her ay bir satır, yeniden
-  // eskiye; tutar sütunlarında o sütunun en iyi ayına oranını gösteren sade
-  // veri çubuğu, ★ en iyi ay, altta toplam. Kargo faturası bekleyen siparişler
-  // için eskiden ayrı bir rozet vardı; artık Net Kâr başlığındaki ⓘ ipucunda.
+  // Aylık rakamların tam TL tablosu — grafikteki kısa etiketlere (₺46,8B)
+  // ek olarak her ayın gerçek tutarlarını okunur biçimde verir. Yeniden
+  // eskiye sıralı; devam eden ay "devam ediyor" etiketiyle işaretlenir.
   function renderMonthlyProfitTable(months) {
     const body = document.getElementById('monthlyProfitTableBody');
-    const foot = document.getElementById('monthlyProfitTableFoot');
     if (!body) return;
     const curIdx = monthlyProfitCurrentMonthIndex(months);
-    const rows = months.map(m => ({
-      m,
-      rev: m.revenue || 0,
-      gross: m.trueGrossProfit || 0,
-      net: monthlyProfitRealNet(m),
-    }));
-    const max = {
-      rev: Math.max(1, ...rows.map(r => r.rev)),
-      gross: Math.max(1, ...rows.map(r => r.gross)),
-      net: Math.max(1, ...rows.map(r => r.net)),
-    };
-    const best = key => rows.reduce((b, r, i) => (r[key] > rows[b][key] ? i : b), 0);
-    const bestIdx = rows.length ? { rev: best('rev'), gross: best('gross'), net: best('net') } : {};
-    const pct = (net, rev) => (rev ? `%${((net / rev) * 100).toFixed(1).replace('.', ',')}` : '–');
-    const cell = (key, r, i) => {
-      const w = Math.max(0, r[key]) / max[key] * 100;
-      const neg = r[key] < 0 ? ' is-neg' : '';
-      const star = bestIdx[key] === i ? '<b class="mpc-star" title="En iyi ay">★</b>' : '';
-      return `<td class="mpc-td"><div class="mpc-cell ${key}" style="--w:${w.toFixed(1)}%"><span class="${neg.trim()}">${star}${monthlyProfitTlFmt.format(r[key])}</span></div></td>`;
-    };
-    body.innerHTML = rows.map((r, i) => {
-      const [y, mo] = r.m.month.split('-');
+    const rows = months.map((m, i) => {
+      const rev = m.revenue || 0;
+      const gross = m.trueGrossProfit || 0;
+      const net = monthlyProfitRealNet(m);
+      const [y, mo] = m.month.split('-');
       const label = new Date(y, mo - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+      const margin = rev ? `%${((net / rev) * 100).toFixed(1).replace('.', ',')}` : '–';
       return `<tr>
         <td>${label}${i === curIdx ? ' <span class="mpc-table-live">devam ediyor</span>' : ''}</td>
-        ${cell('rev', r, i)}${cell('gross', r, i)}${cell('net', r, i)}
-        <td>${pct(r.net, r.rev)}</td>
+        <td>${monthlyProfitTlFmt.format(rev)}</td>
+        <td>${monthlyProfitTlFmt.format(gross)}</td>
+        <td class="${net < 0 ? 'is-neg' : 'is-pos'}">${monthlyProfitTlFmt.format(net)}</td>
+        <td>${margin}</td>
       </tr>`;
-    }).reverse().join('');
-    if (foot) {
-      const sum = key => rows.reduce((t, r) => t + r[key], 0);
-      foot.innerHTML = `<tr><td>Toplam</td><td>${monthlyProfitTlFmt.format(sum('rev'))}</td><td>${monthlyProfitTlFmt.format(sum('gross'))}</td><td>${monthlyProfitTlFmt.format(sum('net'))}</td><td>${pct(sum('net'), sum('rev'))}</td></tr>`;
-    }
+    }).reverse();
+    body.innerHTML = rows.join('');
+    // Kargo faturası bekleyen siparişler: eskiden ayrı bir rozetti; artık Net Kâr
+    // başlığındaki ⓘ ipucunda (net kâr bu aylarda eksik olabilir).
     const hint = document.getElementById('mpcNetHint');
     if (hint) {
       const incomplete = months.filter(m => m.incompleteData && m.ordersMissingCargo > 0);
@@ -569,7 +514,7 @@
   // DOM/render sırası veya Chart.js instance'larının hazır olup olmaması
   // switch davranışını etkilemez.
   function setMonthlyProfitView(view) {
-    if (view !== 'trend' && view !== 'cfo' && view !== 'table') return;
+    if (view !== 'trend' && view !== 'cfo') return;
 
     monthlyProfitView = view;
 
@@ -594,14 +539,6 @@
     // Canvas state
     lineCanvas.classList.toggle('is-hidden', !isTrend);
     barCanvas.classList.toggle('is-hidden', !isCfo);
-    // Tablo görünümünde grafik alanı ve metrik seçici gizlenir.
-    const chartWrap = document.getElementById('monthlyProfitChartWrap');
-    if (chartWrap) {
-      if (view === 'table') chartWrap.classList.add('is-hidden');
-      else if (monthlyProfitMonths.length) chartWrap.classList.remove('is-hidden');
-    }
-    const metricSel = document.getElementById('monthlyProfitMetricSelector');
-    if (metricSel) metricSel.classList.toggle('is-hidden', view === 'table');
 
     // display:none'den çıkan canvas için Chart.js yeniden ölçülmeli.
     requestAnimationFrame(() => {
@@ -772,12 +709,15 @@
       type: 'bar',
       label: m.label,
       data: dataByKey[m.key],
-      backgroundColor: (context) => monthlyProfitGlassFill(context, m.color()),
-      borderColor: () => lalAlpha(m.color(), lalIsLightTheme() ? 0.55 : 0.5),
-      borderWidth: 1,
-      borderRadius: 6,
+      // Klasik, düz sütun: Apple sistem renkleri (ciro mavi, brüt kâr turuncu,
+      // net kâr yeşil), üst köşeler yuvarlak, cam/parlama efekti yok.
+      backgroundColor: () => m.color(),
+      borderWidth: 0,
+      borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
       borderSkipped: false,
-      maxBarThickness: 22,
+      categoryPercentage: 0.76,
+      barPercentage: 0.92,
+      maxBarThickness: 40,
     }));
 
     monthlyProfitBarChart = new Chart(ctx, {
@@ -812,7 +752,7 @@
           },
         },
       },
-      plugins: [monthlyProfitBarValueLabels, monthlyProfitGlassHighlight],
+      plugins: [monthlyProfitBarValueLabels],
     });
     monthlyProfitBarChart.currentMonthIndex = monthlyProfitCurrentMonthIndex(months);
 
