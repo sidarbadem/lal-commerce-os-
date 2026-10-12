@@ -94,6 +94,24 @@
       </div>
     </div>
 
+
+    <!-- 2. grafik: Ay ayrıntısı — iç içe kapsüller, seçili satır açılır -->
+    <div class="panel mpx-panel">
+      <div class="panel-header-row"><div>
+        <h2>Ay ayrıntısı</h2>
+        <p class="panel-note">Bir ayın satırına dokun, açılsın. İç içe kapsül: ciro ⊃ brüt kâr ⊃ net kâr.</p>
+      </div></div>
+      <div class="mpx-wrap"><canvas id="mpxCapsules" role="img" aria-label="Aylık ciro, brüt kâr ve net kâr kapsülleri"></canvas></div>
+    </div>
+
+    <!-- 3. grafik: Aylık halkalar -->
+    <div class="panel mpx-panel">
+      <div class="panel-header-row"><div>
+        <h2>Aylık halkalar</h2>
+        <p class="panel-note">Seçili ayın en iyi aya oranı: dış halka ciro, orta halka brüt kâr, iç halka net kâr.</p>
+      </div></div>
+      <div class="mpx-wrap mpx-wrap-rings"><canvas id="mpxRings" role="img" aria-label="Seçili ayın ciro, brüt kâr ve net kâr halkaları"></canvas></div>
+    </div>
   </div>
 
   <!-- === DETAYLI GRAFİKLER (Faz 5: artık accordion değil, sayfanın sabit bir bölümü) === -->
@@ -133,4 +151,5 @@
 <script src="{{ url_for('static', filename='js/reveal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/countup.js') }}"></script>
 <script src="{{ url_for('static', filename='js/gosterge-paneli.js') }}"></script>
+<script src="{{ url_for('static', filename='js/gosterge-aylik-ek.js') }}" defer></script>
 {% endblock %}

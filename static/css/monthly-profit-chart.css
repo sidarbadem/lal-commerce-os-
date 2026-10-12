@@ -196,11 +196,6 @@
   display: none !important;
 }
 
-.mpc-chart-wrap {
-  background-image:
-    radial-gradient(circle at 12% 92%, var(--lal-amber-dim), transparent 55%),
-    radial-gradient(circle at 88% 8%, var(--lal-green-dim), transparent 55%);
-}
 
 .mpc-tooltip {
   background: color-mix(in srgb, var(--lal-surface-2) 74%, transparent);
@@ -209,3 +204,9 @@
   border: 1px solid color-mix(in srgb, var(--lal-border-soft) 70%, transparent);
 }
 .mpc-info { margin-left: 4px; color: var(--lal-text-faint); cursor: help; }
+
+/* ---------- 2. ve 3. grafik: Ay ayrıntısı (kapsül) ve Aylık halkalar ---------- */
+.mpx-panel .panel-note { margin: 4px 0 0; }
+.mpx-wrap { position: relative; margin-top: var(--lal-space-4); height: 480px; }
+.mpx-wrap-rings { height: 380px; }
+.mpx-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }

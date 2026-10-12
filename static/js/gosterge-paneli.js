@@ -294,24 +294,53 @@
     afterDatasetsDraw(chart) {
       const ctx = chart.ctx;
       const zeroY = chart.scales.y.getPixelForValue(0);
-      ctx.save();
-      ctx.font = `600 11.5px ${LAL_CHART_FONT}`;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = monthlyProfitValueLabelColor();
+      // Kısa etiket: ₺ işareti yok (eksende/tooltip'te var), "B" = bin.
+      const text = (v) => {
+        const sign = v < 0 ? '-' : '';
+        const abs = Math.abs(v);
+        if (abs >= 10000) return `${sign}${Math.round(abs / 1000)}B`;
+        if (abs >= 1000) return `${sign}${(abs / 1000).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}B`;
+        return `${sign}${Math.round(abs)}`;
+      };
+      const items = [];
       chart.data.datasets.forEach((ds, dsIndex) => {
         if (!chart.isDatasetVisible(dsIndex)) return;
-        const meta = chart.getDatasetMeta(dsIndex);
-        meta.data.forEach((bar, i) => {
+        chart.getDatasetMeta(dsIndex).data.forEach((bar, i) => {
           const value = ds.data[i];
-          if (!value) return; // 0 / null / undefined -> etiket yok
+          if (!value) return;
           const isCurrentMonthBar = i === chart.currentMonthIndex;
-          // Devam eden ay dışındaki barlarda eşik korunur (çakışma önleme);
-          // devam eden ay komşusuz olduğu için eşikten muaf tutulur.
           if (!isCurrentMonthBar && Math.abs(bar.y - zeroY) < MONTHLY_PROFIT_LABEL_MIN_PX) return;
-          const isNeg = value < 0;
-          ctx.textBaseline = isNeg ? 'top' : 'bottom';
-          ctx.fillText(monthlyProfitCompactTl(value), bar.x, bar.y + (isNeg ? 4 : -4));
+          items.push({ bar, value, t: text(value) });
         });
+      });
+      if (!items.length) return;
+      // Çakışma önleme: etiket sütundan geniş olmasın. Önce 11.5 → 10.5 → 9.5px
+      // dene; hiçbiri sığmazsa TÜM etiketler tutarlı biçimde dikey yazılır.
+      const minBarW = Math.min(...items.map(it => it.bar.width || 0)) || 0;
+      ctx.save();
+      let size = null;
+      for (const sz of [11.5, 10.5, 9.5]) {
+        ctx.font = `600 ${sz}px ${LAL_CHART_FONT}`;
+        if (Math.max(...items.map(it => ctx.measureText(it.t).width)) <= minBarW) { size = sz; break; }
+      }
+      const vertical = size === null;
+      ctx.font = `600 ${vertical ? 11 : size}px ${LAL_CHART_FONT}`;
+      ctx.fillStyle = monthlyProfitValueLabelColor();
+      items.forEach(({ bar, value, t }) => {
+        const isNeg = value < 0;
+        if (vertical) {
+          ctx.save();
+          ctx.translate(bar.x, bar.y + (isNeg ? 6 : -6));
+          ctx.rotate(-Math.PI / 2);
+          ctx.textAlign = isNeg ? 'right' : 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(t, 0, 0);
+          ctx.restore();
+        } else {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = isNeg ? 'top' : 'bottom';
+          ctx.fillText(t, bar.x, bar.y + (isNeg ? 4 : -4));
+        }
       });
       ctx.restore();
     },
@@ -501,6 +530,16 @@
     renderMonthlyProfitLineChart(months);
     renderMonthlyProfitBarChart(months);
     renderMonthlyProfitTable(months);
+
+    // 2. ve 3. grafik (gosterge-aylik-ek.js) aynı aylık veriyi bu olaydan alır.
+    const extra = months.map(m => ({
+      month: m.month,
+      rev: m.revenue || 0,
+      gross: m.trueGrossProfit || 0,
+      net: monthlyProfitRealNet(m),
+    }));
+    window.__lalMonthlyProfit = extra;
+    document.dispatchEvent(new CustomEvent('lal:monthly-profit', { detail: extra }));
 
     // Chart.js instance'ları artık hazır. Mevcut view state'ini
     // canvas'lara tekrar uygula.
@@ -715,16 +754,16 @@
       borderWidth: 0,
       borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
       borderSkipped: false,
-      categoryPercentage: 0.76,
-      barPercentage: 0.92,
-      maxBarThickness: 40,
+      categoryPercentage: 0.84,
+      barPercentage: 0.94,
+      maxBarThickness: 44,
     }));
 
     monthlyProfitBarChart = new Chart(ctx, {
       data: { labels, datasets },
       options: {
         maintainAspectRatio: false,
-        layout: { padding: { top: 20, right: 12, bottom: 4, left: 4 } },
+        layout: { padding: { top: 38, right: 12, bottom: 4, left: 4 } },
         interaction: { mode: 'index', intersect: false },
         // Sütun grupları arası nefes payı — "sıkışık e-ticaret bar chart"
         // hissi yerine daha ferah, kurumsal/analitik bir grid.
