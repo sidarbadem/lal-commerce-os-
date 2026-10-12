@@ -17,7 +17,12 @@
   var pc2 = px.getContext('2d', { willReadFrequently: true });
   var data = [], sel = -1, rh = [], dv = { r: 0, g: 0, n: 0 }, t0 = performance.now();
   var vis = [true, true], ys = [], hs = [], ringRowH = 100;
-  var clamp = function (x, a, b) { return Math.min(b, Math.max(a, x)); };
+  // a/b verilmezse 0..1 aralığı (animasyon ilerlemesi çağrıları clamp(x) ile gelir).
+  var clamp = function (x, a, b) {
+    if (a === undefined) a = 0;
+    if (b === undefined) b = 1;
+    return Math.min(b, Math.max(a, x));
+  };
   var ease = function (t) { return 1 - Math.pow(1 - t, 3); };
   var tok = function (n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); };
   function rgb(c) { pc2.clearRect(0, 0, 1, 1); pc2.fillStyle = '#000'; pc2.fillStyle = c; pc2.fillRect(0, 0, 1, 1); var d = pc2.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]]; }
