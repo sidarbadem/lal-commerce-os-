@@ -27,7 +27,11 @@
   var tok = function (n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); };
   function rgb(c) { pc2.clearRect(0, 0, 1, 1); pc2.fillStyle = '#000'; pc2.fillStyle = c; pc2.fillRect(0, 0, 1, 1); var d = pc2.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]]; }
   function isLight() { var c = rgb(tok('--lal-surface')); return (c[0] * 299 + c[1] * 587 + c[2] * 114) / 1000 > 150; }
-  function pal() { return isLight() ? ['#007AFF', '#FF9500', '#34C759'] : ['#0A84FF', '#FF9F0A', '#30D158']; }
+  // Ortak palet gosterge-paneli.js'ten gelir (tek kaynak); yedek: aynı sakin tonlar.
+  function pal() {
+    if (window.lalFinancePalette) return window.lalFinancePalette();
+    return isLight() ? ['#6A97D9', '#E0A35F', '#74B78F'] : ['#6A9BE0', '#E0AA6A', '#6DBB8E'];
+  }
   function al(h, a) { var c = rgb(h); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
   var K = function (v) { return '₺' + Math.round(v).toLocaleString('tr-TR'); };
   var S = function (v) { return Math.abs(v) >= 1000 ? '₺' + Math.round(v / 1000) + 'B' : '₺' + Math.round(v); };

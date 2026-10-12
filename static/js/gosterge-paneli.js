@@ -206,6 +206,18 @@
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
+  // Finans grafiklerinin ORTAK renk paleti: [ciro, brüt kâr, net kâr]. Apple
+  // mavi/turuncu/yeşil tonlarının sakin (az doygun) hâli — sistem renklerinin
+  // tam doygunluğu (#007AFF vb.) uzun süre bakınca gözü yoruyordu. Sütun
+  // grafik, trend çizgileri, legend ve gosterge-aylik-ek.js (kapsül/halkalar)
+  // hepsi bunu kullanır; rengi değiştirmek için TEK yer burası.
+  function lalFinancePalette() {
+    return lalIsLightTheme()
+      ? ['#6A97D9', '#E0A35F', '#74B78F']
+      : ['#6A9BE0', '#E0AA6A', '#6DBB8E'];
+  }
+  window.lalFinancePalette = lalFinancePalette;
+
   function lalIsLightTheme() {
     const [r, g, b] = lalRgb(lalToken('--lal-surface'));
     return (r * 299 + g * 587 + b * 114) / 1000 > 150;
@@ -229,9 +241,9 @@
   // --lal-green kullanılıyor (LAL'in 3 semantik renginden biri).
   function monthlyProfitMetrics() {
     return [
-      { key: 'revenue', label: 'Ciro', width: 1.75, dash: [], pointStyle: 'circle', fill: false, color: () => (lalIsLightTheme() ? '#007AFF' : '#0A84FF') },
-      { key: 'grossProfit', label: 'Brüt Kâr', width: 2, dash: [5, 4], pointStyle: 'circle', fill: false, color: () => (lalIsLightTheme() ? '#FF9500' : '#FF9F0A') },
-      { key: 'netProfit', label: 'Net Kâr', width: 2.75, dash: [], pointStyle: 'circle', fill: true, color: () => (lalIsLightTheme() ? '#34C759' : '#30D158') },
+      { key: 'revenue', label: 'Ciro', width: 1.75, dash: [], pointStyle: 'circle', fill: false, color: () => lalFinancePalette()[0] },
+      { key: 'grossProfit', label: 'Brüt Kâr', width: 2, dash: [5, 4], pointStyle: 'circle', fill: false, color: () => lalFinancePalette()[1] },
+      { key: 'netProfit', label: 'Net Kâr', width: 2.75, dash: [], pointStyle: 'circle', fill: true, color: () => lalFinancePalette()[2] },
     ];
   }
 
