@@ -16,6 +16,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request
 
 from database import get_connection
 from finance_engine import compute_profit_summary
+from manual_orders import count_manual_orders
 from finance_engine import best_sellers as compute_best_sellers
 from sync_core import (
     DATA_START_DATE,
@@ -140,8 +141,9 @@ def today_order_count():
             "SELECT COUNT(*) AS c FROM orders WHERE order_date >= ? AND order_date < ?",
             (start_ms, end_ms),
         ).fetchone()
+        manual_count = count_manual_orders(conn, start_ms, end_ms)
 
-    return jsonify({"count": row["c"] if row else 0})
+    return jsonify({"count": (row["c"] if row else 0) + manual_count})
 
 @bp.route("/api/today-net-profit")
 def today_net_profit():

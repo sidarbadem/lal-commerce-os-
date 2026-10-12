@@ -20,7 +20,7 @@ from database import get_connection, list_product_images
 from finance_engine import NEVER_FULFILLED_STATUSES
 from finance_engine import best_sellers as compute_best_sellers
 from finance_engine import compute_profit_summary
-from manual_orders import MANUAL_CHANNELS, merge_into_listing
+from manual_orders import MANUAL_CHANNELS, fetch_manual_daily_rows, merge_into_listing
 from sync_core import DATA_START_DATE, _check_credentials, _resolve_sync_range, get_daily_returns
 
 bp = Blueprint("order_routes", __name__)
@@ -119,6 +119,7 @@ def daily_sales():
             for r in qty_rows:
                 item_counts[(r["marketplace"], r["shipment_package_id"])] = r["qty"] or 0
                 commission_by_key[(r["marketplace"], r["shipment_package_id"])] = r["est_commission"] or 0
+        manual_rows = fetch_manual_daily_rows(conn, start_ms, end_ms)
 
     daily_map = defaultdict(lambda: {
         "order_count": 0, "gross_amount": 0.0, "discount_amount": 0.0,
@@ -158,6 +159,19 @@ def daily_sales():
             d["item_count"] += item_counts.get((r["marketplace"], r["shipment_package_id"]), 0)
             d["commission_amount"] += commission_by_key.get((r["marketplace"], r["shipment_package_id"]), 0)
 
+    # Manuel siparişler (softhydra.com / n11 / Amazon): aynı kurallarla sayılır —
+    # iptal edilenler tutar toplamlarından çıkar, sadece cancelled_count'a girer.
+    for m in manual_rows:
+        d = daily_map[datetime.fromtimestamp(m["orderDate"] / 1000).strftime("%Y-%m-%d")]
+        d["order_count"] += 1
+        if m["status"] in NEVER_FULFILLED_STATUSES:
+            d["cancelled_count"] += 1
+        else:
+            d["gross_amount"] += m["sale"]
+            d["net_amount"] += m["sale"]
+            d["item_count"] += m["qty"]
+            d["commission_amount"] += m["commission"]
+
     daily = [{"date": k, **v} for k, v in sorted(daily_map.items())]
     for d in daily:
         d["gross_amount"] = round(d["gross_amount"], 2)
@@ -188,6 +202,20 @@ def daily_sales():
         }
         for r in order_rows
     ]
+    orders_summary.extend(
+        {
+            "orderNumber": m["orderNumber"],
+            "shipmentPackageId": None,
+            "marketplace": m["channel"],
+            "orderDate": m["orderDate"],
+            "status": m["status"],
+            "customer": m["customer"],
+            "netAmount": m["sale"],
+            "cargoProvider": None,
+        }
+        for m in manual_rows
+    )
+    orders_summary.sort(key=lambda o: o["orderDate"] or 0, reverse=True)
 
     # "daily" ve "totals" HER ZAMAN tam aralık üzerinden hesaplanır (yukarıda),
     # sadece ham sipariş listesi sayfalanır — büyük aralıklarda payload'ı makul

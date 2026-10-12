@@ -81,6 +81,7 @@ BİLİNÇLİ OLARAK KORUNAN (dürüst) TAHMİNLER:
     bilgisi yok). Uydurulmuyor; UI'da "—, veri yok" gösterilmeli, 0 değil.
 """
 
+import sqlite3
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -944,6 +945,101 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
     return by_marketplace
 
 
+def _manual_profit_inputs(start_ms, end_ms, marketplace_filter):
+    """Manuel siparişleri (softhydra.com / n11 / Amazon) kâr motoruna katar.
+
+    Bu siparişler API'den gelmediği için orders/order_lines tablolarında yok;
+    kendi tablolarında (manuel_siparisler / manuel_siparis_kalemleri) duruyor
+    ve eskiden SADECE Siparişler listesinde görünüyordu. Bu yüzden Bugünkü
+    Satış, günlük kâr, Gösterge Paneli ve aylık grafikler onları hiç
+    saymıyordu.
+
+    Net kâr kuralı manual_orders.compute_totals ile AYNI: satış - alış
+    maliyeti (KDV dahil, girişte dondurulmuş) - komisyon - kargo. Pazaryeri
+    settlement'ı olmadığı için tahmin yok; hesap tam. Stopaj/iade gibi
+    dönemsel giderler manuel kanallarda yok.
+
+    Komisyon ve kargo SİPARİŞ düzeyinde girildiği için kalemlere satış
+    payına göre dağıtılır (kuruş farkı son kaleme yazılır).
+
+    marketplace_filter verildiyse (trendyol/hepsiburada sekmeleri) manuel
+    kanallar o filtreye ait değildir -> boş döner. İptal/yerine gelmeyen
+    siparişler dahil edilmez (NEVER_FULFILLED_STATUSES).
+
+    Döner: (lines, line_results) — ikisi aynı sırada, compute_profit_summary'nin
+    kendi satır listelerine eklenir.
+    """
+    if marketplace_filter:
+        return [], []
+    ph = ",".join("?" for _ in NEVER_FULFILLED_STATUSES)
+    params = (start_ms, end_ms, *NEVER_FULFILLED_STATUSES)
+    try:
+        with get_connection() as conn:
+            orders = conn.execute(
+                f"""SELECT * FROM manuel_siparisler
+                    WHERE order_date BETWEEN ? AND ? AND status NOT IN ({ph})
+                    ORDER BY order_date, id""", params).fetchall()
+            item_rows = conn.execute(
+                f"""SELECT * FROM manuel_siparis_kalemleri WHERE order_id IN
+                    (SELECT id FROM manuel_siparisler
+                     WHERE order_date BETWEEN ? AND ? AND status NOT IN ({ph}))
+                    ORDER BY id""", params).fetchall()
+    except sqlite3.OperationalError:
+        return [], []  # eski DB: manuel sipariş tabloları henüz yok
+
+    by_order = defaultdict(list)
+    for it in item_rows:
+        by_order[it["order_id"]].append(it)
+
+    lines, results = [], []
+    for o in orders:
+        items = by_order.get(o["id"], [])
+        if not items:
+            continue
+        sales = [(i["quantity"] or 0) * (i["unit_price"] or 0) for i in items]
+        sale_total = sum(sales)
+        commission_total = o["commission"] or 0.0
+        cargo_total = o["cargo_cost"] or 0.0
+        order_number = o["order_ref"] or f"M-{o['id']}"
+        comm_left, cargo_left = commission_total, cargo_total
+        for idx, (i, sale) in enumerate(zip(items, sales)):
+            last = idx == len(items) - 1
+            share = (sale / sale_total) if sale_total > 0 else 1.0 / len(items)
+            commission = round(comm_left if last else commission_total * share, 2)
+            cargo = round(cargo_left if last else cargo_total * share, 2)
+            comm_left -= commission
+            cargo_left -= cargo
+            qty = i["quantity"] or 0
+            cogs = round(qty * (i["unit_cost"] or 0), 2)
+            sale = round(sale, 2)
+            lines.append({
+                "marketplace": o["channel"], "order_number": order_number,
+                "order_date": o["order_date"], "shipment_package_id": None,
+                "merchant_sku": i["sku"], "barcode": None,
+                "product_name": i["product_name"], "quantity": qty,
+            })
+            results.append({
+                "orderNumber": order_number, "orderDate": o["order_date"],
+                "marketplace": o["channel"], "sku": i["sku"], "barcode": None,
+                "productName": i["product_name"], "quantity": qty,
+                "grossRevenue": sale, "returnAmount": 0.0, "returnDate": None,
+                "netRevenue": sale, "revenueExclVat": None,
+                "commission": commission, "serviceFee": 0.0,
+                "netHakedis": round(sale - commission, 2),
+                "cogs": cogs, "cogsExclVat": None,
+                "cogsReversal": 0.0, "cogsReversalEstimated": False, "cogsReversalNote": None,
+                "cargo": cargo, "vatOnSale": None, "vatOnCost": None,
+                "profit": round(sale - cogs - commission - cargo, 2),
+                "profitExclVat": None,
+                "trueGrossProfit": round(sale - cogs, 2),
+                "estimated": False, "missingCost": False,
+                "cargoMissing": False, "cargoEstimated": False, "cargoStatus": "manual",
+                "vatMissing": True, "fromSettlementOnly": False, "quantityEstimated": False,
+                "isManual": True,
+            })
+    return lines, results
+
+
 def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_filter=None,
                             include_settlement_only=True):
     """marketplace_filter: None -> tüm pazaryerleri (=eski 'all'),
@@ -993,6 +1089,13 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             missing_cost_skus.add(missing_cost_sku)
         if line_result["cargoMissing"]:
             cargo_missing_orders.add(ln["order_number"])
+
+    # Manuel siparişler (softhydra.com / n11 / Amazon): bkz. _manual_profit_inputs.
+    manual_lines, manual_results = _manual_profit_inputs(start_ms, end_ms, marketplace_filter)
+    if manual_lines:
+        lines = list(lines) + manual_lines
+        line_results.extend(manual_results)
+        real_count += len(manual_results)
 
     gross_profit = sum(r["profit"] for r in line_results if r["profit"] is not None)  # bkz. not (asagida overhead sonrasi net_profit'e girer)
     # FAZ 1 (15.09.2026): gerçek Brüt Kâr (Ciro - SADECE COGS) -- netProfit

@@ -3,6 +3,7 @@
 Stored in their own tables so Trendyol/Hepsiburada sync and finance_engine are untouched.
 Net profit = sale total - cost of goods (cost incl. VAT, snapshotted at entry) - commission - cargo.
 """
+import sqlite3
 from datetime import datetime
 
 from database import get_connection, list_product_images
@@ -296,3 +297,52 @@ def merge_into_listing(orders, main_total, *, where_sql, params, offset, page_si
         return orders, main_total
     merged = select_for_page(orders, manual, main_total, offset, page_size, prev_last)
     return merged, main_total + len(manual)
+
+
+def fetch_manual_daily_rows(conn, start_ms, end_ms):
+    """/api/daily-sales için: aralıktaki TÜM manuel siparişler (iptaller dahil;
+    daily-sales iptali kendisi ayıklar). Her sipariş için satış toplamı, adet ve
+    komisyon hesaplanmış döner. Tablo yoksa (eski DB) boş liste."""
+    try:
+        rows = conn.execute(
+            "SELECT * FROM manuel_siparisler WHERE order_date BETWEEN ? AND ? ORDER BY order_date DESC, id DESC",
+            (start_ms, end_ms),
+        ).fetchall()
+        item_rows = conn.execute(
+            """SELECT order_id, SUM(quantity * unit_price) AS sale, SUM(quantity) AS qty
+               FROM manuel_siparis_kalemleri
+               WHERE order_id IN (SELECT id FROM manuel_siparisler WHERE order_date BETWEEN ? AND ?)
+               GROUP BY order_id""",
+            (start_ms, end_ms),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    agg = {r["order_id"]: r for r in item_rows}
+    out = []
+    for r in rows:
+        a = agg.get(r["id"])
+        out.append({
+            "id": r["id"],
+            "orderNumber": r["order_ref"] or f"M-{r['id']}",
+            "channel": r["channel"],
+            "orderDate": r["order_date"],
+            "status": r["status"],
+            "customer": r["customer"],
+            "sale": round((a["sale"] if a else 0) or 0, 2),
+            "qty": int((a["qty"] if a else 0) or 0),
+            "commission": r["commission"] or 0.0,
+        })
+    return out
+
+
+def count_manual_orders(conn, start_ms, end_ms):
+    """[start_ms, end_ms) aralığındaki manuel sipariş sayısı (tüm statüler —
+    /api/today-order-count ham operasyonel sayaç olduğu için iptaller dahil)."""
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM manuel_siparisler WHERE order_date >= ? AND order_date < ?",
+            (start_ms, end_ms),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return 0
+    return row["c"] if row else 0
