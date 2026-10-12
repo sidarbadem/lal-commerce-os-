@@ -49,7 +49,7 @@
     });
     if (sel < 0 || sel >= data.length) sel = data.length - 1;
     rh = data.map(function () { return 36; });
-    wrapCap.style.height = (Math.max(0, data.length - 1) * 36 + 178 + 16) + 'px';
+    wrapCap.style.height = (Math.max(0, data.length - 1) * 36 + 178 + 16 + 24) + 'px';
     t0 = performance.now();
   });
   if (window.__lalMonthlyProfit) document.dispatchEvent(new CustomEvent('lal:monthly-profit', { detail: window.__lalMonthlyProfit }));
@@ -71,8 +71,24 @@
   function drawCap(W, H, g) {
     var n = data.length, cl = pal(), fg = tok('--lal-text-main'), mu = tok('--lal-text-muted'), sep = tok('--lal-border-soft'), fill = tok('--lal-surface-2');
     var mx = Math.max.apply(null, data.map(function (d) { return d.r; }).concat([1]));
-    var pl = 78, pr = Math.min(170, W * .3), tw = W - pl - pr - 14, y = 6;
+    // Sağdaki iki sütun (Ciro | Net kâr): genişlikler veriden ölçülür, başlıklar
+    // sayıların hizasında durur.
+    var wRev = 0, wNet = 0, gap = 24, hdrH = 24;
+    cc.font = F('650', 13);
+    data.forEach(function (x) {
+      wRev = Math.max(wRev, cc.measureText(S(x.r)).width);
+      wNet = Math.max(wNet, cc.measureText(S(x.n)).width);
+    });
+    cc.font = F('600', 12);
+    wRev = Math.max(wRev, cc.measureText('Ciro').width);
+    wNet = Math.max(wNet, cc.measureText('Net kâr').width);
+    var xNet = W - 12, xRev = xNet - wNet - gap;
+    var pl = 78, pr = wRev + wNet + gap + 28, tw = W - pl - pr - 14, y = 6 + hdrH;
     ys = []; hs = [];
+    [['Ciro', xRev, cl[0]], ['Net kâr', xNet, cl[2]]].forEach(function (c2) {
+      cc.font = F('600', 12); cc.textAlign = 'right'; cc.fillStyle = mu; cc.fillText(c2[0], c2[1], 18);
+      cc.fillStyle = c2[2]; cc.beginPath(); cc.arc(c2[1] - cc.measureText(c2[0]).width - 9, 14, 3.5, 0, 7); cc.fill();
+    });
     for (var r = 0; r < n; r++) {
       var k = n - 1 - r, h = rh[k], isSel = k === sel, d = data[k];
       rh[k] += ((isSel ? 178 : 36) - rh[k]) * (RM ? 1 : .2); h = rh[k];
@@ -88,7 +104,9 @@
       });
       cc.globalAlpha = 1;
       cc.textAlign = 'right'; cc.fillStyle = isSel ? fg : mu; cc.font = F(isSel ? '650' : '', 13);
-      cc.fillText(S(d.r) + '  ·  ' + S(d.n), W - 12, isSel ? by + bh / 2 + 5 : y + h / 2 + 4);
+      var ty = isSel ? by + bh / 2 + 5 : y + h / 2 + 4;
+      cc.fillText(S(d.r), xRev, ty);
+      cc.fillText(S(d.n), xNet, ty);
       if (isSel && h > 150) {
         var w3 = (W - pl - 12 - 24) / 3, yy = y + 66, prev = k > 0 ? data[k - 1] : null;
         [['Ciro', d.r, 0], ['Brüt kâr', d.g, 1], ['Net kâr', d.n, 2]].forEach(function (q, i) {
