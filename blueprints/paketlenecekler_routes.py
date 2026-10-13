@@ -394,6 +394,7 @@ def api_hb_label():
         return jsonify({"error": "Etiket çözülemedi"}), 502
     if not pdf.startswith(b"%PDF"):
         return jsonify({"error": "Etiket PDF değil"}), 502
+    pdf = _brand_hb_label(pdf)
     resp = Response(pdf, mimetype="application/pdf")
     resp.headers["Content-Disposition"] = 'inline; filename="etiket.pdf"'
     resp.headers["Cache-Control"] = "no-store"
@@ -489,3 +490,136 @@ def api_ty_label():
     resp.headers["Content-Disposition"] = 'inline; filename="trendyol-etiket.pdf"'
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+# --- Toplu etiket yazdırma (12.10.2026) -----------------------------------
+# Seçilen Trendyol + Hepsiburada paketlerinin etiketlerini TEK PDF'te toplar
+# (her etiket ayrı sayfa, seçim sırasıyla). Salt okunur: yalnızca etiket
+# GET'leri yapılır, yazma bayrağı (LAL_WRITES_ENABLED) gerekmez.
+BULK_LABEL_MAX = 50
+
+
+def _hb_label_pdf_bytes(core, package_number):
+    """HB paket etiketi (tek parça PDF) bayt olarak. Hata -> RuntimeError(mesaj)."""
+    import base64
+    try:
+        path = hbw.label_path(core.HB_MERCHANT_ID, package_number)
+    except ValueError as exc:
+        raise RuntimeError(str(exc))
+    try:
+        raw = core.hepsiburada_get(path, {"format": "pdf"})
+    except Exception as exc:
+        raise RuntimeError(str(exc)[:200])
+    parts = raw.get("data") if isinstance(raw, dict) else None
+    if not isinstance(parts, list) or len(parts) != 1:
+        raise RuntimeError("Beklenmeyen etiket yanıtı")
+    try:
+        pdf = base64.b64decode(parts[0], validate=True)
+    except Exception:
+        raise RuntimeError("Etiket çözülemedi")
+    if not pdf.startswith(b"%PDF"):
+        raise RuntimeError("Etiket PDF değil")
+    return _brand_hb_label(pdf)
+
+
+def _ty_label_pdf_bytes(core, package_id):
+    """Trendyol paket etiketi (100x150 mm, tek sayfa) bayt olarak."""
+    if not str(package_id).isdigit():
+        raise RuntimeError("Geçersiz paket no")
+    now = int(time.time() * 1000)
+    try:
+        data = core.trendyol_get(
+            "/integration/order/sellers/%s/v2/orders" % core.SUPPLIER_ID,
+            {"shipmentPackageIds": package_id, "startDate": now - 12 * 24 * 3600 * 1000,
+             "endDate": now + 24 * 3600 * 1000, "size": 50})
+    except Exception as exc:
+        raise RuntimeError(str(exc)[:200])
+    pkgs = (data or {}).get("content") or []
+    pkg = next((p for p in pkgs
+                if str(p.get("id") or p.get("shipmentPackageId")) == str(package_id)), None)
+    if not pkg:
+        raise RuntimeError("Paket bulunamadı (son 12 gün)")
+    import ty_label as tyl
+    try:
+        return tyl.build_label_pdf(pkg)
+    except ValueError as exc:
+        raise RuntimeError(str(exc))
+
+
+@bp.route("/api/paketlenecekler/etiketler", methods=["POST"])
+def api_bulk_labels():
+    import io
+    import json
+    from flask import Response
+    if not request.is_json:
+        return jsonify({"error": "JSON gerekli"}), 415
+    payload = request.get_json(silent=True)
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list) or not items:
+        return jsonify({"error": "Etiket için paket seçilmedi"}), 400
+    if len(items) > BULK_LABEL_MAX:
+        return jsonify({"error": "En fazla %d etiket birlikte yazdırılabilir" % BULK_LABEL_MAX}), 400
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        return jsonify({"error": "pypdf kurulu değil"}), 500
+
+    core = _core()
+    hb_cred_error = None
+    writer = PdfWriter()
+    skipped = []
+    seen = set()
+    count = 0
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        mp = str(it.get("marketplace") or "")
+        pid = str(it.get("package_id") or "").strip()
+        label = str(it.get("order_number") or "")[:64] or pid
+        if (mp, pid) in seen:
+            continue
+        seen.add((mp, pid))
+        try:
+            if mp == "trendyol":
+                pdf = _ty_label_pdf_bytes(core, pid)
+            elif mp == "hepsiburada":
+                if hb_cred_error is None:
+                    hb_cred_error = core._check_hb_credentials() or ""
+                if hb_cred_error:
+                    raise RuntimeError(hb_cred_error)
+                pdf = _hb_label_pdf_bytes(core, pid)
+            else:
+                raise RuntimeError("Bilinmeyen pazaryeri")
+            for page in PdfReader(io.BytesIO(pdf)).pages:
+                writer.add_page(page)
+            count += 1
+        except RuntimeError as exc:
+            skipped.append({"marketplace": mp, "package_id": pid,
+                            "order_number": label, "reason": str(exc)[:160]})
+        except Exception as exc:
+            logger.warning("toplu etiket atlandi (%s %s): %s", mp, pid, exc)
+            skipped.append({"marketplace": mp, "package_id": pid,
+                            "order_number": label, "reason": "Etiket üretilemedi"})
+    if not count:
+        return jsonify({"error": "Hiçbir etiket alınamadı", "skipped": skipped}), 422
+    out = io.BytesIO()
+    writer.write(out)
+    resp = Response(out.getvalue(), mimetype="application/pdf")
+    resp.headers["Content-Disposition"] = 'inline; filename="etiketler.pdf"'
+    resp.headers["Cache-Control"] = "no-store"
+    # json.dumps varsayılanı ASCII kaçışlıdır -> HTTP başlığında güvenli
+    resp.headers["X-Etiket-Atlanan"] = json.dumps(skipped)
+    return resp
+
+
+def _brand_hb_label(pdf):
+    """HB etiketine SoftHydra logosu + Hepsiburada teşekkür kartı basar.
+
+    Etiket hiçbir koşulda bozulmasın diye hata olursa orijinal PDF döner.
+    """
+    try:
+        import hb_label
+        return hb_label.stamp_hb_label(pdf)
+    except Exception as exc:
+        logger.warning("HB etiket markalama atlandi: %s", exc)
+        return pdf

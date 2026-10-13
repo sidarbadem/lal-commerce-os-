@@ -88,7 +88,7 @@
     var ty = r.marketplace === 'trendyol';
     var state = r.state === 'packed' ? 'Paket hazır, kargolanacak' : 'Paketlenecek';
     return '<article class="pk-card"><div>' +
-      '<div class="pk-head"><span class="pk-badge ' + (ty ? 'pk-mp-ty' : 'pk-mp-hb') + '">' +
+      '<div class="pk-head">' + selBox(r, idx) + '<span class="pk-badge ' + (ty ? 'pk-mp-ty' : 'pk-mp-hb') + '">' +
       (ty ? 'Trendyol' : 'Hepsiburada') + '</span><span class="pk-no">' + esc(r.order_number) +
       '</span><span class="pk-state">' + state + '</span></div>' +
       '<ul class="pk-lines">' + lines + '</ul>' +
@@ -98,12 +98,148 @@
       '<span class="pk-due">Kargoya teslim: ' + dt(r.due_ms) + '</span>' +
       '<div class="pk-total">' + money(r.total) + '</div></div></article>';
   }
+  // --- Toplu etiket yazdırma (12.10.2026) ---
+  var bulkSel = {};
+  var bulkBar = null;
+  var bulkBusy = false;
+  function labelKey(r) { return r.marketplace + ':' + r.package_id; }
+  function labelable(r) {
+    return (r.marketplace === 'trendyol' && r.state === 'created') ||
+      (r.marketplace === 'hepsiburada' && r.state === 'packed');
+  }
+  function selBox(r, idx) {
+    if (!labelable(r)) return '';
+    return '<input type="checkbox" class="pk-sel" data-idx="' + idx + '" aria-label="Etiket için seç"' +
+      (bulkSel[labelKey(r)] ? ' checked' : '') + '>';
+  }
+  function bulkMsg(t) {
+    if (bulkBar) bulkBar.querySelector('.pk-bulk-msg').textContent = t || '';
+  }
+  function updateBar() {
+    if (!bulkBar) return;
+    var total = 0, picked = 0;
+    shown.forEach(function (r) {
+      if (!labelable(r)) return;
+      total++;
+      if (bulkSel[labelKey(r)]) picked++;
+    });
+    var all = bulkBar.querySelector('.pk-sel-all');
+    all.checked = total > 0 && picked === total;
+    all.indeterminate = picked > 0 && picked < total;
+    var btn = bulkBar.querySelector('.pk-bulk-print');
+    btn.disabled = bulkBusy || picked === 0;
+    btn.textContent = 'Seçilenlerin etiketlerini yazdır' + (picked ? ' (' + picked + ')' : '');
+    bulkBar.style.display = total ? '' : 'none';
+  }
+  function printSelected() {
+    if (bulkBusy) return;
+    var items = shown.filter(function (r) { return labelable(r) && bulkSel[labelKey(r)]; })
+      .map(function (r) {
+        return {marketplace: r.marketplace, package_id: String(r.package_id),
+                order_number: String(r.order_number || '')};
+      });
+    if (!items.length) return;
+    var w = window.open('', '_blank');
+    bulkBusy = true;
+    updateBar();
+    bulkMsg('Etiketler hazırlanıyor…');
+    fetch('/api/paketlenecekler/etiketler', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({items: items})
+    }).then(function (res) {
+      var ct = res.headers.get('Content-Type') || '';
+      if (res.ok && ct.indexOf('application/pdf') !== -1) {
+        var skipped = [];
+        try { skipped = JSON.parse(res.headers.get('X-Etiket-Atlanan') || '[]'); } catch (e) { skipped = []; }
+        return res.blob().then(function (blob) { return {blob: blob, skipped: skipped}; });
+      }
+      return res.json().catch(function () { return {}; }).then(function (j) { throw j; });
+    }).then(function (out) {
+      var url = URL.createObjectURL(out.blob);
+      if (w) {
+        w.location.href = url;
+      } else {
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'etiketler.pdf';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+      var okCount = items.length - out.skipped.length;
+      var txt = okCount + ' etiket hazır';
+      if (out.skipped.length) {
+        txt += ', ' + out.skipped.length + ' atlandı: ' + out.skipped.map(function (s) {
+          return (s.order_number || s.package_id) + ' (' + s.reason + ')';
+        }).join('; ');
+      }
+      bulkMsg(txt);
+      bulkSel = {};
+      Array.prototype.forEach.call(listEl.querySelectorAll('.pk-sel'), function (c) { c.checked = false; });
+    }).catch(function (err) {
+      if (w) w.close();
+      var txt = (err && err.error) || 'Etiketler alınamadı';
+      if (err && err.skipped && err.skipped.length) {
+        txt += ': ' + err.skipped.map(function (s) {
+          return (s.order_number || s.package_id) + ' (' + s.reason + ')';
+        }).join('; ');
+      }
+      bulkMsg(txt);
+    }).then(function () {
+      bulkBusy = false;
+      updateBar();
+    });
+  }
+  function ensureBar() {
+    if (bulkBar) return;
+    var st = document.createElement('style');
+    st.textContent = '.pk-bulk{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}' +
+      '.pk-bulk label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}' +
+      '.pk-bulk-msg{font-size:12.5px;opacity:.75}' +
+      '.pk-sel,.pk-sel-all{width:16px;height:16px;margin:0 8px 0 0;cursor:pointer;vertical-align:middle;flex:none}';
+    document.head.appendChild(st);
+    bulkBar = document.createElement('div');
+    bulkBar.className = 'pk-bulk';
+    bulkBar.innerHTML = '<label><input type="checkbox" class="pk-sel-all"> Tümünü seç</label>' +
+      '<button type="button" class="lal-btn lal-btn-secondary pk-bulk-print" disabled>Seçilenlerin etiketlerini yazdır</button>' +
+      '<span class="pk-bulk-msg"></span>';
+    listEl.parentNode.insertBefore(bulkBar, listEl);
+    bulkBar.querySelector('.pk-sel-all').addEventListener('change', function (e) {
+      var on = e.target.checked;
+      shown.forEach(function (r) {
+        if (!labelable(r)) return;
+        if (on) bulkSel[labelKey(r)] = true; else delete bulkSel[labelKey(r)];
+      });
+      Array.prototype.forEach.call(listEl.querySelectorAll('.pk-sel'), function (c) { c.checked = on; });
+      updateBar();
+    });
+    bulkBar.querySelector('.pk-bulk-print').addEventListener('click', printSelected);
+    listEl.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains('pk-sel')) return;
+      var r = shown[parseInt(t.getAttribute('data-idx'), 10)];
+      if (!r) return;
+      if (t.checked) bulkSel[labelKey(r)] = true; else delete bulkSel[labelKey(r)];
+      updateBar();
+    });
+  }
+  function syncBulk() {
+    ensureBar();
+    var present = {};
+    shown.forEach(function (r) { if (labelable(r)) present[labelKey(r)] = true; });
+    Object.keys(bulkSel).forEach(function (k) { if (!present[k]) delete bulkSel[k]; });
+    updateBar();
+  }
+
   function render() {
     if (!data) return;
     var mp = mpEl.value;
     shown = data.rows.filter(function (r) { return !mp || r.marketplace === mp; });
     listEl.innerHTML = shown.length ? shown.map(card).join('') :
       '<div class="pk-empty">Paketlenecek sipariş yok.</div>';
+    syncBulk();
     var ty = data.rows.filter(function (r) { return r.marketplace === 'trendyol'; }).length;
     var hb = data.rows.length - ty;
     var note = data.rows.length + ' sipariş · Trendyol ' + ty + ' · Hepsiburada ' + hb;

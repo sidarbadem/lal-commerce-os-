@@ -7,3 +7,4 @@ celery==5.4.0
 redis==5.0.8
 cryptography==43.0.1
 reportlab==5.0.1
+pypdf==6.20.0
