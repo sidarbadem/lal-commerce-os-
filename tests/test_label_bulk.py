@@ -379,3 +379,22 @@ def _blank_hb_pdf():
     b = _io.BytesIO()
     c = _cv.Canvas(b, pagesize=(288, 432)); c.drawString(20, 400, "HB"); c.showPage(); c.save()
     return b.getvalue()
+
+
+# --- Ürün adı / alıcı adı temizliği ---
+def test_product_title_strips_one_size_and_duplicate_code():
+    assert ty_label.product_title("Ortimax 8’i 1 Arada Dijital Su Ölçüm Cihazı SH-8IN1-METER, one size", "SH-8IN1-METER") == \
+        "Ortimax 8’i 1 Arada Dijital Su Ölçüm Cihazı"
+    assert ty_label.product_title("Filtre Sistemi, One Size") == "Filtre Sistemi"
+
+
+def test_product_title_keeps_name_when_code_is_the_whole_name():
+    assert ty_label.product_title("SH-BM01", "SH-BM01") == "SH-BM01"
+
+
+def test_tr_title_only_for_all_lower_or_all_upper():
+    assert ty_label.tr_title("semra bekdemir") == "Semra Bekdemir"
+    assert ty_label.tr_title("ENES KARADUMAN") == "Enes Karaduman"
+    assert ty_label.tr_title("IŞIL İPEKÇİ") == "Işıl İpekçi"
+    assert ty_label.tr_title("Mehmet Sarıtaş") == "Mehmet Sarıtaş"
+    assert ty_label.tr_title("Ali van Der") == "Ali van Der"

@@ -48,13 +48,15 @@ def _rows(c, items, x, top, w, floor, nsz=6.4, img=26, badge=14, lines=3):
     """Adet rozeti + ürün görseli + ad. Önce görselli, sığmazsa görselsiz, sonra tek satır sıkı mod;
     yine sığmayanlar '+ N ürün daha' olur."""
     ims = [t.load_product_image(it.get("imageUrl")) for it in items]
+    if len(items) == 1:  # tek ürün: kartta yer var -> daha büyük görsel, ad kesilmesin
+        img, lines = 36, 5
     avail = top - floor
 
     def plan(mode):
         out = []
         for it, im0 in zip(items, ims):
             sku = t._clean(it.get("sku"))
-            title = t.product_title(it.get("name"))
+            title = t.product_title(it.get("name"), sku)
             if mode == "C":
                 nm = t._wrap_max(("%s · %s" % (sku, title)) if sku else title, t._BOLD, 6.2, w - 12 - 4, 1)
                 out.append((12, nm, "", None, 6.2))
@@ -66,7 +68,7 @@ def _rows(c, items, x, top, w, floor, nsz=6.4, img=26, badge=14, lines=3):
             im = im0 if mode == "A" else None
             tx_w = w - badge - 4 - (img + 4 if im else 0)
             nm = t._wrap_max(title, t._BOLD, nsz, tx_w, lines if mode == "A" else 2)
-            th = len(nm) * (nsz + 1.5) + (8 if sku else 0)
+            th = len(nm) * (nsz + 1.5) + (9 if sku else 0)
             out.append((max(th, img if im else 0) + 5, nm, sku, im, nsz))
         return out
 
@@ -98,7 +100,7 @@ def _rows(c, items, x, top, w, floor, nsz=6.4, img=26, badge=14, lines=3):
             t.txt(c, tx, ty, s, t._BOLD, sz)
             ty -= sz + 1.5
         if sku:
-            t.txt(c, tx, ty, sku, t._REG, sz - 1)
+            t.txt(c, tx, ty - 0.5, sku, t._BOLD, sz + 0.6)
         y -= rh
         shown += 1
     if shown < len(items):
@@ -118,11 +120,11 @@ def _draw_lower(c, o):
     ty = top - 29
     nm = None
     for nsz in (10.5, 9.5, 8.5, 7.5):
-        nm = t._wrap_max(o.get("name"), t._BOLD, nsz, lw - 16, 2)
+        nm = t._wrap_max(t.tr_title(o.get("name")), t._BOLD, nsz, lw - 16, 2)
         if not nm[-1].endswith("…"):
             break
     else:
-        nm = t._wrap_max(o.get("name"), t._BOLD, 7.5, lw - 16, 3)
+        nm = t._wrap_max(t.tr_title(o.get("name")), t._BOLD, 7.5, lw - 16, 3)
     for s in nm:
         t.txt(c, M + 8, ty, s, t._BOLD, nsz)
         ty -= nsz + 1.5
@@ -153,12 +155,16 @@ def _draw_lower(c, o):
     # teşekkür kartı
     y2 = y1 - 6 - r2
     _box(c, M, y2, W - 2 * M, r2)
-    t.draw_stars(c, W / 2, y2 + r2 - 10, 4.5)
-    ty = y2 + r2 - 22
-    for s in simpleSplit(THANKS, t._BOLD, 7.8, W - 2 * M - 20)[:2]:
+    thanks = simpleSplit(THANKS, t._BOLD, 7.8, W - 2 * M - 20)[:2]
+    review = simpleSplit(REVIEW, t._REG, 6.6, W - 2 * M - 20)[:2]
+    content_h = 9 + 12 + len(thanks) * 9.3 + len(review) * 8.1
+    off = max((r2 - content_h) / 2, 4)
+    t.draw_stars(c, W / 2, y2 + r2 - off - 4.5, 4.5)
+    ty = y2 + r2 - off - 9 - 11
+    for s in thanks:
         t.txt(c, W / 2, ty, s, t._BOLD, 7.8, t.K, "c")
         ty -= 9.3
-    for s in simpleSplit(REVIEW, t._REG, 6.6, W - 2 * M - 20)[:2]:
+    for s in review:
         t.txt(c, W / 2, ty, s, t._REG, 6.6, t.K, "c")
         ty -= 8.1
 

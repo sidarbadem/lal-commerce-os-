@@ -64,6 +64,24 @@ def _ensure_fonts():
 
 
 # ---------- ortak yardımcılar (hb_label.py de kullanır) ----------
+def tr_lower(s):
+    """Türkçe küçük harf: I->ı, İ->i."""
+    return (s or "").replace("I", "ı").replace("İ", "i").lower()
+
+
+def tr_title(s):
+    """Müşteri adı tamamen küçük ya da tamamen BÜYÜK yazılmışsa Baş Harfleri Büyük yapar;
+    karışık yazılmış adlara dokunmaz."""
+    s = _clean(s)
+    letters = [ch for ch in s if ch.isalpha()]
+    if not letters or not (s == tr_lower(s) or s == tr_upper(s)):
+        return s
+    out = []
+    for w in s.split(" "):
+        out.append((tr_upper(w[:1]) + tr_lower(w[1:])) if w else w)
+    return " ".join(out)
+
+
 def tr_upper(s):
     """Türkçe büyük harf: i->İ, ı->I."""
     return (s or "").replace("i", "İ").replace("ı", "I").upper()
@@ -82,9 +100,15 @@ def _clean(value):
     return re.sub(r"\s+", " ", str(value if value is not None else "")).strip()
 
 
-def product_title(value):
-    """Ürün adı: baştaki '|' / '-' artıkları (marka alanı boş gelen Trendyol adları) atılır."""
-    return re.sub(r"^[\s|\-–—]+", "", _clean(value))
+def product_title(value, code=None):
+    """Ürün adı: baştaki '|' / '-' artıkları atılır; sondaki ', one size' ve adla aynı olan
+    SKU/stok kodu tekrarı (kod zaten ayrı satırda) temizlenir."""
+    t = re.sub(r"^[\s|\-–—]+", "", _clean(value))
+    t = re.sub(r"[,\s]*\bone\s*size\s*$", "", t, flags=re.I)
+    code = _clean(code)
+    if code and t.upper().endswith(code.upper()) and len(t) > len(code) + 8:
+        t = t[: len(t) - len(code)].rstrip(" ,-–—|")
+    return t or _clean(value)
 
 
 def _fit(text, font, size, width):
@@ -357,7 +381,7 @@ def _draw_label(c, d):
     y -= ch + 6
 
     # alıcı kartı (yüksekliği içeriğe göre)
-    name_lines = _wrap_max(d["name"], _BOLD, 13.5, iw - 18, 1)
+    name_lines = _wrap_max(tr_title(d["name"]), _BOLD, 13.5, iw - 18, 1)
     addr_lines = _wrap_max(d["address"], _REG, 10, iw - 18, 3)
     ah = 28 + 15 * len(name_lines) + (14 if d["phone"] else 0) + 12 * len(addr_lines) + 23
     c.roundRect(M, y - ah, iw, ah, 9, stroke=1, fill=0)
@@ -412,7 +436,7 @@ def _draw_label(c, d):
         out = []
         for ln, im in zip(items, imgs):
             code = _clean(ln.get("stockCode") or ln.get("merchantSku"))
-            title = product_title(ln.get("productName"))
+            title = product_title(ln.get("productName"), code)
             if mode == "C":
                 nm = _wrap_max(("%s · %s" % (code, title)) if code else title, _BOLD, 7.5, iw_text - 25, 1)
                 out.append((14.5, nm, "", None))
@@ -420,7 +444,7 @@ def _draw_label(c, d):
             use_img = im if mode == "A" else None
             tx_w = iw_text - 25 - (isz + 5 if use_img else 0)
             nm = _wrap_max(title, _BOLD, 8, tx_w, 3 if (use_img and len(items) == 1) else 2)
-            th = len(nm) * 9.5 + (9 if code else 0)
+            th = len(nm) * 9.5 + (11 if code else 0)
             out.append((max(th, isz if use_img else 0) + 5, nm, code, use_img))
         return out
 
@@ -454,7 +478,7 @@ def _draw_label(c, d):
             txt(c, text_x, ty, s_, _BOLD, 8 if mode != "C" else 7.5)
             ty -= 9.5
         if code:
-            txt(c, text_x, ty, code, _REG, 7)
+            txt(c, text_x, ty - 1, code, _BOLD, 9)
         row_top -= row_h
         shown += 1
     if shown < len(items):
