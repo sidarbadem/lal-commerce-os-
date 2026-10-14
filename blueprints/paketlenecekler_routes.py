@@ -394,7 +394,7 @@ def api_hb_label():
         return jsonify({"error": "Etiket çözülemedi"}), 502
     if not pdf.startswith(b"%PDF"):
         return jsonify({"error": "Etiket PDF değil"}), 502
-    pdf = _brand_hb_label(pdf)
+    pdf = _brand_hb_label(pdf, request.args.get("package_number"))
     resp = Response(pdf, mimetype="application/pdf")
     resp.headers["Content-Disposition"] = 'inline; filename="etiket.pdf"'
     resp.headers["Cache-Control"] = "no-store"
@@ -479,6 +479,7 @@ def api_ty_label():
     if not pkg:
         return jsonify({"error": "Paket bulunamadı (son 12 gün)"}), 404
     try:
+        _enrich_ty_images(pkg)
         import ty_label as tyl
         pdf = tyl.build_label_pdf(pkg)
     except ValueError as exc:
@@ -519,7 +520,7 @@ def _hb_label_pdf_bytes(core, package_number):
         raise RuntimeError("Etiket çözülemedi")
     if not pdf.startswith(b"%PDF"):
         raise RuntimeError("Etiket PDF değil")
-    return _brand_hb_label(pdf)
+    return _brand_hb_label(pdf, package_number)
 
 
 def _ty_label_pdf_bytes(core, package_id):
@@ -539,6 +540,7 @@ def _ty_label_pdf_bytes(core, package_id):
                 if str(p.get("id") or p.get("shipmentPackageId")) == str(package_id)), None)
     if not pkg:
         raise RuntimeError("Paket bulunamadı (son 12 gün)")
+    _enrich_ty_images(pkg)
     import ty_label as tyl
     try:
         return tyl.build_label_pdf(pkg)
@@ -612,13 +614,125 @@ def api_bulk_labels():
     return resp
 
 
-def _brand_hb_label(pdf):
-    """HB etiketine SoftHydra logosu + Hepsiburada teşekkür kartı basar.
+# --- Etiket v3: kargo firması, ürün görseli, Hepsiburada tek etiket -----------------
+def _label_images(skus):
+    """{sku: imageUrl|None}. Sayfadaki ürün görselleriyle aynı kaynak ve kurallar
+    (product_images tablosu + sku_alias); hata etiketi bozmaz."""
+    row = {"lines": [{"sku": s or ""} for s in skus]}
+    attach_images([row])
+    return {ln["sku"]: ln.get("imageUrl") for ln in row["lines"]}
 
-    Etiket hiçbir koşulda bozulmasın diye hata olursa orijinal PDF döner.
-    """
+
+def _enrich_ty_images(pkg):
+    """Trendyol paket satırlarına imageUrl ekler (kural: sayfadaki satırla aynı sku)."""
+    try:
+        lines = pkg.get("lines") or []
+        skus = [ln.get("merchantSku") or ln.get("barcode") or "" for ln in lines]
+        found = _label_images(skus)
+        for ln, sku in zip(lines, skus):
+            ln["imageUrl"] = found.get(sku)
+    except Exception as exc:
+        logger.warning("Trendyol etiket gorselleri eklenemedi: %s", exc)
+
+
+_HB_ITEMS = {"ts": 0.0, "items": None}
+
+
+def _hb_items_cached(core, ttl=30):
+    """HB sipariş kalemleri (toplu etikette her etiket için yeniden çekmemek için 30 sn)."""
+    now = time.time()
+    if _HB_ITEMS["items"] is None or now - _HB_ITEMS["ts"] > ttl:
+        _HB_ITEMS["items"] = _hb_fetch_orders(core)
+        _HB_ITEMS["ts"] = now
+    return _HB_ITEMS["items"]
+
+
+def _hb_order_detail_items(core, order_no):
+    """HB sipariş detayı (salt okunur GET): kalemler, her kalemde shippingAddress."""
+    base = (getattr(core, "HB_ORDERS_PATH", "") or "").rstrip("/")
+    if not base or not order_no:
+        return []
+    data = core.hepsiburada_get("%s/ordernumber/%s" % (base, order_no), {})
+    if isinstance(data, dict):
+        items = data.get("items") or data.get("lineItems") or ([data] if data.get("shippingAddress") else [])
+    elif isinstance(data, list):
+        items = data
+    else:
+        items = []
+    return [it for it in items if isinstance(it, dict)]
+
+
+def _hb_label_order(core, package_number):
+    """Paket numarasından HB etiketi için sipariş verisi; bulunamazsa None."""
+    pn = str(package_number)
+
+    def mine_of(src):
+        return [it for it in (src or []) if str(it.get("packageNumber") or "") == pn]
+
+    mine = mine_of(_hb_items_cached(core))
+    if not mine:  # paket az önce oluşturulduysa önbellek eski olabilir
+        _HB_ITEMS["items"] = None
+        mine = mine_of(_hb_items_cached(core))
+    pkg_obj = None
+    if not mine:
+        now = datetime.now()
+        pkgs = core.fetch_all_hb_packages(now - timedelta(days=14), now)
+        pkg_obj = next((p for p in (pkgs or [])
+                        if str(p.get("packageNumber") or p.get("id") or "") == pn), None)
+        mine = (pkg_obj or {}).get("items") or []
+    if not mine:
+        return None
+    first = mine[0]
+    addr = first.get("shippingAddress") or {}
+    model = first.get("cargoCompanyModel") or {}
+    pkg_obj = pkg_obj or {}
+    if not addr.get("city") and not addr.get("address"):
+        # Paketlenmiş kalemlerde teslimat adresi gelmiyorsa sipariş detayından al
+        try:
+            for det in _hb_order_detail_items(core, first.get("orderNumber")):
+                if (det.get("shippingAddress") or {}).get("city") or (det.get("shippingAddress") or {}).get("address"):
+                    addr = det["shippingAddress"]
+                    model = model or det.get("cargoCompanyModel") or {}
+                    break
+        except Exception as exc:
+            logger.warning("HB siparis detayi alinamadi (%s): %s", first.get("orderNumber"), exc)
+    # HB: city=il, town=ilçe, district=mahalle. Gerekirse .env: LAL_HB_ILCE_FIELD=district
+    ilce_field = os.getenv("LAL_HB_ILCE_FIELD", "town")
+    ilce = addr.get(ilce_field) or addr.get("town") or addr.get("district") or ""
+    skus = [(it.get("merchantSKU") or it.get("merchantSku") or it.get("sku") or "") for it in mine]
+    images = _label_images(skus)
+    return {
+        "order_no": str(first.get("orderNumber") or ""),
+        "cargo": first.get("cargoCompany") or model.get("name") or pkg_obj.get("cargoCompany") or "",
+        "name": addr.get("name") or first.get("customerName") or pkg_obj.get("customerName") or "",
+        "address": addr.get("address") or "",
+        "ilce": ilce,
+        "il": addr.get("city") or "",
+        "phone": addr.get("phoneNumber") or addr.get("alternatePhoneNumber") or "",
+        "items": [{"name": it.get("name") or it.get("productName") or "",
+                   "qty": it.get("quantity") or 1, "sku": sku, "imageUrl": images.get(sku)}
+                  for it, sku in zip(mine, skus)],
+    }
+
+
+def _brand_hb_label(pdf, package_number=None):
+    """HB etiketini SoftHydra tasarımına çevirir (HB'nin barkod bloğu aynen kalır).
+    Sipariş verisi alınamazsa yalnız logolu karta, o da olmazsa orijinal PDF'e döner:
+    etiket hiçbir koşulda bozulmaz."""
     try:
         import hb_label
+    except Exception as exc:
+        logger.warning("hb_label yuklenemedi: %s", exc)
+        return pdf
+    if package_number:
+        try:
+            order = _hb_label_order(_core(), package_number)
+            if order:
+                return hb_label.build_hb_label(pdf, order)
+            logger.warning("HB etiket verisi bulunamadi (paket %s); kart yedegi", package_number)
+        except Exception as exc:
+            logger.warning("HB tam etiket uretilemedi (paket %s): %s", package_number, exc)
+    try:
         return hb_label.stamp_hb_label(pdf)
     except Exception as exc:
         logger.warning("HB etiket markalama atlandi: %s", exc)
