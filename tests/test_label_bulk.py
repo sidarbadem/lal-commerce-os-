@@ -398,3 +398,22 @@ def test_tr_title_only_for_all_lower_or_all_upper():
     assert ty_label.tr_title("IŞIL İPEKÇİ") == "Işıl İpekçi"
     assert ty_label.tr_title("Mehmet Sarıtaş") == "Mehmet Sarıtaş"
     assert ty_label.tr_title("Ali van Der") == "Ali van Der"
+
+
+# --- Ürün görseli oranı korunur ---
+def test_image_box_keeps_aspect_and_respects_max_width():
+    portrait = Image.new("L", (100, 200), 255)
+    for x in range(10, 90):
+        for y in range(10, 190):
+            portrait.putpixel((x, y), 0)
+    w, h = ty_label.image_box(portrait, 60)
+    assert h <= 60.01 and w < h
+    w2, h2 = ty_label.image_box(portrait, 60, max_w=20)
+    assert w2 <= 20.01 and abs(w2 / h2 - w / h) < 0.01
+
+
+def test_single_item_image_fits_inside_card_for_long_address():
+    pkg = _pkg(order="11702000222", n_lines=1)
+    pkg["shipmentAddress"]["fullAddress"] = "Çok uzun bir mahalle sokak adı " * 6
+    pdf = ty_label.build_label_pdf(pkg)
+    assert pdf.startswith(b"%PDF")

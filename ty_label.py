@@ -269,26 +269,44 @@ def _atkinson(img):
     return Image.frombytes("L", (w, h), bytes(int(v) for v in px))
 
 
-def draw_product_image(c, x, y, size, img):
-    """(x, y) sol-alt. Görseli kareye sığdırır, 203 dpi'de keskinleştirip dither'layarak
-    (termal yazıcı yalnız siyah/beyaz basar) ince çerçeveyle çizer."""
-    n = max(int(round(size * 203 / 72)), 24)
+def _crop_ink(img):
+    """Beyaz kenar boşluklarını atar -> ürün kutuyu daha çok doldurur."""
     g = img
     bbox = ImageOps.invert(g).point(lambda v: 255 if v > 24 else 0).getbbox()
-    if bbox:  # beyaz kenar boşluklarını at -> ürün kareyi daha çok doldurur
+    if bbox:
         pad = max(2, int(0.03 * max(g.size)))
         g = g.crop((max(bbox[0] - pad, 0), max(bbox[1] - pad, 0),
                     min(bbox[2] + pad, g.width), min(bbox[3] + pad, g.height)))
-    g.thumbnail((n, n), Image.LANCZOS)
+    return g
+
+
+def image_box(img, size, max_w=None):
+    """Görselin etikette kaplayacağı (genişlik, yükseklik) pt; oran korunur, size x size'a sığar."""
+    g = _crop_ink(img)
+    k = size / float(max(g.size))
+    w, h = g.width * k, g.height * k
+    if max_w and w > max_w:
+        w, h = max_w, h * max_w / w
+    return w, h
+
+
+def draw_product_image(c, x, y, size, img, max_w=None):
+    """(x, y) kutunun SOL-ÜSTÜ değil sol-alt köşesi olan size x size alanın sol-altı; görsel bu alanın
+    üstüne hizalanır, kendi oranında çizilir (yanlarda beyaz boşluk yok), 203 dpi'de keskinleştirilip
+    dither'lanır (termal yazıcı yalnız siyah/beyaz basar) ve ince çerçeveyle çevrilir.
+    Çizilen (genişlik, yükseklik) döner."""
+    pw, ph = image_box(img, size, max_w)
+    nw, nh = max(int(round(pw * 203 / 72)), 12), max(int(round(ph * 203 / 72)), 12)
+    g = _crop_ink(img).resize((nw, nh), Image.LANCZOS)
     g = ImageOps.autocontrast(g, cutoff=1)
     g = ImageEnhance.Contrast(g).enhance(1.3)
     g = g.filter(ImageFilter.UnsharpMask(radius=1.2, percent=140, threshold=2))
-    sq = Image.new("L", (n, n), 255)
-    sq.paste(g, ((n - g.width) // 2, (n - g.height) // 2))
-    c.drawImage(ImageReader(_atkinson(sq)), x, y, size, size)
+    yy = y + size - ph
+    c.drawImage(ImageReader(_atkinson(g)), x, yy, pw, ph)
     c.setLineWidth(0.8)
     c.setStrokeColorRGB(*K)
-    c.rect(x, y, size, size, stroke=1, fill=0)
+    c.rect(x, yy, pw, ph, stroke=1, fill=0)
+    return pw, ph
 
 
 def draw_header(c, order_no, cargo, top, logo_h=34):
@@ -427,7 +445,9 @@ def _draw_label(c, d):
     total_qty = sum(int(ln.get("quantity") or 1) for ln in items)
     if total_qty > 1:
         txt(c, M + iw - 10, y - 14, "TOPLAM %d ADET" % total_qty, _BOLD, 7.5, K, "r")
-    isz = 56 if len(items) == 1 else 34
+    isz = 34
+    if len(items) == 1:  # tek ürün: kartın boş alanını kullan (en fazla 84 pt)
+        isz = int(max(34, min(84, row_top - floor - 8)))
     iw_text = iw - 18
     imgs = [load_product_image(ln.get("imageUrl")) for ln in items]
 
@@ -442,10 +462,11 @@ def _draw_label(c, d):
                 out.append((14.5, nm, "", None))
                 continue
             use_img = im if mode == "A" else None
-            tx_w = iw_text - 25 - (isz + 5 if use_img else 0)
+            ibw, ibh = image_box(use_img, isz, iw_text * 0.45) if use_img else (0, 0)
+            tx_w = iw_text - 25 - (ibw + 5 if use_img else 0)
             nm = _wrap_max(title, _BOLD, 8, tx_w, 3 if (use_img and len(items) == 1) else 2)
             th = len(nm) * 9.5 + (11 if code else 0)
-            out.append((max(th, isz if use_img else 0) + 5, nm, code, use_img))
+            out.append((max(th, ibh) + 5, nm, code, use_img))
         return out
 
     avail = row_top - floor
@@ -470,9 +491,10 @@ def _draw_label(c, d):
         qtxt = ("×" + qty) if qty != "1" else qty
         txt(c, M + 9 + bw / 2, row_top - bh + (6 if mode != "C" else 3.5), qtxt, _BOLD,
             fit_size(qtxt, _BOLD, bf, bw - 3, 6), WHITE, "c")
-        text_x = M + 9 + 25 + (isz + 5 if img else 0)
+        text_x = M + 9 + 25
         if img:
-            draw_product_image(c, M + 9 + 25, row_top - isz, isz, img)
+            ibw, _ibh = draw_product_image(c, M + 9 + 25, row_top - isz, isz, img, iw_text * 0.45)
+            text_x += ibw + 5
         ty = row_top - (7 if mode != "C" else 8.8)
         for s_ in nm:
             txt(c, text_x, ty, s_, _BOLD, 8 if mode != "C" else 7.5)

@@ -49,7 +49,7 @@ def _rows(c, items, x, top, w, floor, nsz=6.4, img=26, badge=14, lines=3):
     yine sığmayanlar '+ N ürün daha' olur."""
     ims = [t.load_product_image(it.get("imageUrl")) for it in items]
     if len(items) == 1:  # tek ürün: kartta yer var -> daha büyük görsel, ad kesilmesin
-        img, lines = 36, 5
+        img, lines = int(max(26, min(60, top - floor - 8))), 6
     avail = top - floor
 
     def plan(mode):
@@ -66,10 +66,11 @@ def _rows(c, items, x, top, w, floor, nsz=6.4, img=26, badge=14, lines=3):
                 out.append((len(nm) * (nsz + 1.5) + 4, nm, "", None, nsz))
                 continue
             im = im0 if mode == "A" else None
-            tx_w = w - badge - 4 - (img + 4 if im else 0)
+            ibw = t.image_box(im, img, w * 0.4)[0] if im else 0
+            tx_w = w - badge - 4 - (ibw + 4 if im else 0)
             nm = t._wrap_max(title, t._BOLD, nsz, tx_w, lines if mode == "A" else 2)
             th = len(nm) * (nsz + 1.5) + (9 if sku else 0)
-            out.append((max(th, img if im else 0) + 5, nm, sku, im, nsz))
+            out.append((max(th, t.image_box(im, img, w * 0.4)[1] if im else 0) + 5, nm, sku, im, nsz))
         return out
 
     chosen = None
@@ -92,9 +93,10 @@ def _rows(c, items, x, top, w, floor, nsz=6.4, img=26, badge=14, lines=3):
         qt = ("×" + q) if q != "1" else q
         t.txt(c, x + b / 2, y - b + (4 if mode != "C" else 3), qt, t._BOLD,
               t.fit_size(qt, t._BOLD, 9 if mode != "C" else 8, b - 2, 5.5), t.WHITE, "c")
-        tx = x + b + 4 + (img + 4 if im else 0)
+        tx = x + b + 4
         if im:
-            t.draw_product_image(c, x + b + 4, y - img, img, im)
+            ibw, _ = t.draw_product_image(c, x + b + 4, y - img, img, im, w * 0.4)
+            tx += ibw + 4
         ty = y - sz - 0.5 - (1 if mode == "C" else 0)
         for s in nm:
             t.txt(c, tx, ty, s, t._BOLD, sz)
