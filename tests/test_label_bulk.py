@@ -301,3 +301,44 @@ def test_product_title_strips_leading_pipe():
     assert ty_label.product_title("| Daire Tipi Tesisat") == "Daire Tipi Tesisat"
     assert ty_label.product_title("Softhydra | Daire Tipi") == "Softhydra | Daire Tipi"
     assert ty_label.product_title(None) == ""
+
+
+# --- Etiket dosya adı: etiket-1.pdf, etiket-2.pdf ... ---
+def test_label_names_are_sequential_and_persistent(tmp_path, monkeypatch):
+    import blueprints.paketlenecekler_routes as pr
+    monkeypatch.setattr(pr, "_LABEL_COUNTER_FILE", str(tmp_path / "sayac.txt"))
+    assert [pr._next_label_name() for _ in range(3)] == ["etiket-1.pdf", "etiket-2.pdf", "etiket-3.pdf"]
+    assert (tmp_path / "sayac.txt").read_text().strip() == "3"
+    assert pr._next_label_name() == "etiket-4.pdf"
+
+
+def test_label_name_survives_corrupt_counter(tmp_path, monkeypatch):
+    import blueprints.paketlenecekler_routes as pr
+    f = tmp_path / "sayac.txt"
+    f.write_text("bozuk")
+    monkeypatch.setattr(pr, "_LABEL_COUNTER_FILE", str(f))
+    assert pr._next_label_name() == "etiket-1.pdf"
+
+
+def test_label_response_sets_filename_header(tmp_path, monkeypatch):
+    import blueprints.paketlenecekler_routes as pr
+    from flask import Flask
+    monkeypatch.setattr(pr, "_LABEL_COUNTER_FILE", str(tmp_path / "sayac.txt"))
+    with Flask(__name__).app_context():
+        resp, name = pr._label_response(b"%PDF-x")
+    assert name == "etiket-1.pdf"
+    assert 'filename="etiket-1.pdf"' in resp.headers["Content-Disposition"]
+    assert resp.headers["X-Etiket-Dosya"] == "etiket-1.pdf"
+
+
+def test_bulk_stash_serves_pdf_with_same_name(monkeypatch):
+    import blueprints.paketlenecekler_routes as pr
+    from flask import Flask
+    app = Flask(__name__)
+    app.register_blueprint(pr.bp)
+    token = pr._stash_label(b"%PDF-y", "etiket-9.pdf")
+    c = app.test_client()
+    r = c.get("/api/paketlenecekler/etiketler/dosya/%s/etiket-9.pdf" % token)
+    assert r.status_code == 200 and r.data == b"%PDF-y"
+    assert 'filename="etiket-9.pdf"' in r.headers["Content-Disposition"]
+    assert c.get("/api/paketlenecekler/etiketler/dosya/yok/etiket-9.pdf").status_code == 404

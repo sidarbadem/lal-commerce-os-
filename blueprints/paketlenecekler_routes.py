@@ -1,10 +1,12 @@
 import json
 import logging
 import os
+import secrets
+import threading
 import time
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, Response, jsonify, render_template, request
 
 import hb_write_client as hbw
 import ty_write_client as tyw
@@ -286,6 +288,54 @@ def _log(action, order_number, target_id, req, dry_run, status, text, ok, market
         logger.warning("paketlenecekler islem gunlugu yazilamadi: %s", exc)
 
 
+
+# --- Etiket dosya adı: etiket-1.pdf, etiket-2.pdf ... (kalıcı sayaç) ----------------
+_LABEL_COUNTER_FILE = "etiket_sayac.txt"
+_LABEL_LOCK = threading.Lock()
+_LABEL_STASH = {}  # token -> (pdf_bytes, dosya_adi, zaman); toplu etiket için kısa ömürlü
+
+
+def _next_label_name():
+    """Her üretilen etiket PDF'ine sıradaki adı verir: etiket-1.pdf, etiket-2.pdf ...
+    Sayaç etiket_sayac.txt'te tutulur (yeniden başlatmada sıfırlanmaz)."""
+    with _LABEL_LOCK:
+        try:
+            with open(_LABEL_COUNTER_FILE, encoding="utf-8") as fh:
+                n = int((fh.read() or "0").strip() or 0)
+        except (OSError, ValueError):
+            n = 0
+        n += 1
+        try:
+            tmp = _LABEL_COUNTER_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(str(n))
+            os.replace(tmp, _LABEL_COUNTER_FILE)
+        except OSError as exc:
+            logger.warning("etiket sayaci yazilamadi: %s", exc)
+    return "etiket-%d.pdf" % n
+
+
+def _label_response(pdf):
+    """Etiket PDF yanıtı; tarayıcı kaydederken adı etiket-N.pdf olur."""
+    name = _next_label_name()
+    resp = Response(pdf, mimetype="application/pdf")
+    resp.headers["Content-Disposition"] = 'inline; filename="%s"' % name
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Etiket-Dosya"] = name
+    return resp, name
+
+
+def _stash_label(pdf, name):
+    now = time.time()
+    for k in [k for k, v in _LABEL_STASH.items() if now - v[2] > 600]:
+        _LABEL_STASH.pop(k, None)
+    while len(_LABEL_STASH) >= 8:
+        _LABEL_STASH.pop(min(_LABEL_STASH, key=lambda k: _LABEL_STASH[k][2]), None)
+    token = secrets.token_urlsafe(16)
+    _LABEL_STASH[token] = (pdf, name, now)
+    return token
+
+
 @bp.route("/paketlenecekler")
 def paketlenecekler_page():
     return render_template("pages/paketlenecekler.html", active_page="paketlenecekler")
@@ -395,9 +445,7 @@ def api_hb_label():
     if not pdf.startswith(b"%PDF"):
         return jsonify({"error": "Etiket PDF değil"}), 502
     pdf = _brand_hb_label(pdf, request.args.get("package_number"))
-    resp = Response(pdf, mimetype="application/pdf")
-    resp.headers["Content-Disposition"] = 'inline; filename="etiket.pdf"'
-    resp.headers["Cache-Control"] = "no-store"
+    resp, _name = _label_response(pdf)
     return resp
 
 
@@ -487,9 +535,7 @@ def api_ty_label():
     except Exception as exc:
         logger.warning("trendyol etiketi uretilemedi: %s", exc)
         return jsonify({"error": "Etiket üretilemedi: %s" % str(exc)[:200]}), 500
-    resp = Response(pdf, mimetype="application/pdf")
-    resp.headers["Content-Disposition"] = 'inline; filename="trendyol-etiket.pdf"'
-    resp.headers["Cache-Control"] = "no-store"
+    resp, _name = _label_response(pdf)
     return resp
 
 
@@ -606,11 +652,24 @@ def api_bulk_labels():
         return jsonify({"error": "Hiçbir etiket alınamadı", "skipped": skipped}), 422
     out = io.BytesIO()
     writer.write(out)
-    resp = Response(out.getvalue(), mimetype="application/pdf")
-    resp.headers["Content-Disposition"] = 'inline; filename="etiketler.pdf"'
-    resp.headers["Cache-Control"] = "no-store"
+    resp, name = _label_response(out.getvalue())
+    # Blob URL dosya adını kaybettirir; PDF kısa süre saklanır, ad sonda olan adresten açılır
+    token = _stash_label(out.getvalue(), name)
+    resp.headers["X-Etiket-Url"] = "/api/paketlenecekler/etiketler/dosya/%s/%s" % (token, name)
     # json.dumps varsayılanı ASCII kaçışlıdır -> HTTP başlığında güvenli
     resp.headers["X-Etiket-Atlanan"] = json.dumps(skipped)
+    return resp
+
+
+@bp.route("/api/paketlenecekler/etiketler/dosya/<token>/<name>")
+def api_labels_file(token, name):
+    from flask import Response
+    item = _LABEL_STASH.get(token)
+    if not item or time.time() - item[2] > 600:
+        return jsonify({"error": "Etiket süresi doldu, yeniden oluşturun"}), 404
+    resp = Response(item[0], mimetype="application/pdf")
+    resp.headers["Content-Disposition"] = 'inline; filename="%s"' % item[1]
+    resp.headers["Cache-Control"] = "no-store"
     return resp
 
 

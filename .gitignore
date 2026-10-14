@@ -41,3 +41,7 @@ analiz_ciktisi2.txt
 *.db.bak*
 __pycache__/
 *.pyc
+
+# Etiket dosya adı sayacı (etiket-1.pdf, etiket-2.pdf ...)
+etiket_sayac.txt
+etiket_sayac.txt.tmp

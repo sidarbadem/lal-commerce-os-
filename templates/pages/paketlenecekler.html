@@ -152,17 +152,19 @@
       if (res.ok && ct.indexOf('application/pdf') !== -1) {
         var skipped = [];
         try { skipped = JSON.parse(res.headers.get('X-Etiket-Atlanan') || '[]'); } catch (e) { skipped = []; }
-        return res.blob().then(function (blob) { return {blob: blob, skipped: skipped}; });
+        var fileUrl = res.headers.get('X-Etiket-Url') || '';
+        var fileName = res.headers.get('X-Etiket-Dosya') || 'etiketler.pdf';
+        return res.blob().then(function (blob) { return {blob: blob, skipped: skipped, fileUrl: fileUrl, fileName: fileName}; });
       }
       return res.json().catch(function () { return {}; }).then(function (j) { throw j; });
     }).then(function (out) {
-      var url = URL.createObjectURL(out.blob);
+      var url = out.fileUrl || URL.createObjectURL(out.blob);
       if (w) {
         w.location.href = url;
       } else {
         var a = document.createElement('a');
         a.href = url;
-        a.download = 'etiketler.pdf';
+        a.download = out.fileName;
         document.body.appendChild(a);
         a.click();
         a.remove();
