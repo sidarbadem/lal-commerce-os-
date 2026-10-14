@@ -341,9 +341,9 @@ def _draw_label(c, d):
     y -= 42
     note = ("Kargo şirketinin dikkatine, bu bir trendyol.com gönderisidir. "
             "Trendyol anlaşmasına uygun işlem yapabilirsiniz.")
-    for s in simpleSplit(note, _REG, 6.3, iw)[:2]:
-        txt(c, M, y, s, _REG, 6.3)
-        y -= 7.5
+    for s in simpleSplit(note, _REG, 6.8, iw)[:2]:
+        txt(c, M, y, s, _REG, 6.8)
+        y -= 8
     y -= 2
 
     # kargo barkodu kartı
@@ -400,6 +400,10 @@ def _draw_label(c, d):
     row_top = y - 26
     floor = y - ph + 5
     items = d["items"]
+    total_qty = sum(int(ln.get("quantity") or 1) for ln in items)
+    if total_qty > 1:
+        txt(c, M + iw - 10, y - 14, "TOPLAM %d ADET" % total_qty, _BOLD, 7.5, K, "r")
+    isz = 56 if len(items) == 1 else 34
     iw_text = iw - 18
     imgs = [load_product_image(ln.get("imageUrl")) for ln in items]
 
@@ -414,10 +418,10 @@ def _draw_label(c, d):
                 out.append((14.5, nm, "", None))
                 continue
             use_img = im if mode == "A" else None
-            tx_w = iw_text - 25 - (39 if use_img else 0)
+            tx_w = iw_text - 25 - (isz + 5 if use_img else 0)
             nm = _wrap_max(title, _BOLD, 8, tx_w, 3 if (use_img and len(items) == 1) else 2)
             th = len(nm) * 9.5 + (9 if code else 0)
-            out.append((max(th, 34 if use_img else 0) + 5, nm, code, use_img))
+            out.append((max(th, isz if use_img else 0) + 5, nm, code, use_img))
         return out
 
     avail = row_top - floor
@@ -439,10 +443,12 @@ def _draw_label(c, d):
         bw, bh, bf = (22, 20, 12) if mode != "C" else (20, 12, 9)
         c.setFillColorRGB(*K)
         c.roundRect(M + 9, row_top - bh, bw, bh, 5 if mode != "C" else 4, stroke=0, fill=1)
-        txt(c, M + 9 + bw / 2, row_top - bh + (6 if mode != "C" else 3.5), qty, _BOLD, bf, WHITE, "c")
-        text_x = M + 9 + 25 + (39 if img else 0)
+        qtxt = ("×" + qty) if qty != "1" else qty
+        txt(c, M + 9 + bw / 2, row_top - bh + (6 if mode != "C" else 3.5), qtxt, _BOLD,
+            fit_size(qtxt, _BOLD, bf, bw - 3, 6), WHITE, "c")
+        text_x = M + 9 + 25 + (isz + 5 if img else 0)
         if img:
-            draw_product_image(c, M + 9 + 25, row_top - 34, 34, img)
+            draw_product_image(c, M + 9 + 25, row_top - isz, isz, img)
         ty = row_top - (7 if mode != "C" else 8.8)
         for s_ in nm:
             txt(c, text_x, ty, s_, _BOLD, 8 if mode != "C" else 7.5)

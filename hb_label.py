@@ -86,7 +86,10 @@ def _rows(c, items, x, top, w, floor, nsz=6.4, img=26, badge=14, lines=3):
         b = badge if mode != "C" else 12
         c.setFillColorRGB(*t.K)
         c.roundRect(x, y - b, b, b, 4 if mode != "C" else 3, stroke=0, fill=1)
-        t.txt(c, x + b / 2, y - b + (4 if mode != "C" else 3), str(it.get("qty") or 1), t._BOLD, 9 if mode != "C" else 8, t.WHITE, "c")
+        q = str(it.get("qty") or 1)
+        qt = ("×" + q) if q != "1" else q
+        t.txt(c, x + b / 2, y - b + (4 if mode != "C" else 3), qt, t._BOLD,
+              t.fit_size(qt, t._BOLD, 9 if mode != "C" else 8, b - 2, 5.5), t.WHITE, "c")
         tx = x + b + 4 + (img + 4 if im else 0)
         if im:
             t.draw_product_image(c, x + b + 4, y - img, img, im)
@@ -143,6 +146,9 @@ def _draw_lower(c, o):
     # ürünler kartı
     _box(c, rx, y1, rw, r1)
     t._chip(c, "ÜRÜNLER", rx + 8, top - 13)
+    tq = sum(int(i.get("qty") or 1) for i in (o.get("items") or []))
+    if tq > 1:
+        t.txt(c, rx + rw - 7, top - 12, "%d ADET" % tq, t._BOLD, 6.8, t.K, "r")
     _rows(c, o.get("items") or [], rx + 7, top - 24, rw - 12, y1 + 5)
     # teşekkür kartı
     y2 = y1 - 6 - r2
