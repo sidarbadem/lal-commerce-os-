@@ -45,30 +45,57 @@ def _box(c, x, y, w, h, r=8, lw=1.3):
 
 
 def _rows(c, items, x, top, w, floor, nsz=6.4, img=26, badge=14, lines=3):
-    """Adet rozeti + ürün görseli + ad. Sığmayan ürünler '+ N ürün daha' olur."""
+    """Adet rozeti + ürün görseli + ad. Önce görselli, sığmazsa görselsiz, sonra tek satır sıkı mod;
+    yine sığmayanlar '+ N ürün daha' olur."""
+    ims = [t.load_product_image(it.get("imageUrl")) for it in items]
+    avail = top - floor
+
+    def plan(mode):
+        out = []
+        for it, im0 in zip(items, ims):
+            sku = t._clean(it.get("sku"))
+            title = t.product_title(it.get("name"))
+            if mode == "C":
+                nm = t._wrap_max(("%s · %s" % (sku, title)) if sku else title, t._BOLD, 6.2, w - 12 - 4, 1)
+                out.append((12, nm, "", None, 6.2))
+                continue
+            if mode == "B2":
+                nm = t._wrap_max(title, t._BOLD, nsz, w - badge - 4, 2)
+                out.append((len(nm) * (nsz + 1.5) + 4, nm, "", None, nsz))
+                continue
+            im = im0 if mode == "A" else None
+            tx_w = w - badge - 4 - (img + 4 if im else 0)
+            nm = t._wrap_max(title, t._BOLD, nsz, tx_w, lines if mode == "A" else 2)
+            th = len(nm) * (nsz + 1.5) + (8 if sku else 0)
+            out.append((max(th, img if im else 0) + 5, nm, sku, im, nsz))
+        return out
+
+    chosen = None
+    for mode in ("A", "B", "B2", "C"):
+        pl = plan(mode)
+        if sum(r[0] for r in pl) <= avail:
+            chosen = (mode, pl)
+            break
+    mode, pl = chosen or ("C", plan("C"))
     y = top
     shown = 0
-    for it in items:
-        im = t.load_product_image(it.get("imageUrl"))
-        tx = x + badge + 4 + (img + 4 if im else 0)
-        nm = t._wrap_max(t.product_title(it.get("name")), t._BOLD, nsz, x + w - tx, lines)
-        sku = t._clean(it.get("sku"))
-        th = len(nm) * (nsz + 1.5) + (8 if sku else 0)
-        rh = max(th, img if im else 0) + 5
+    for it, (rh, nm, sku, im, sz) in zip(items, pl):
         reserve = 9 if shown + 1 < len(items) else 0
         if shown and y - rh < floor + reserve:
             break
+        b = badge if mode != "C" else 12
         c.setFillColorRGB(*t.K)
-        c.roundRect(x, y - badge, badge, badge, 4, stroke=0, fill=1)
-        t.txt(c, x + badge / 2, y - badge + 4, str(it.get("qty") or 1), t._BOLD, 9, t.WHITE, "c")
+        c.roundRect(x, y - b, b, b, 4 if mode != "C" else 3, stroke=0, fill=1)
+        t.txt(c, x + b / 2, y - b + (4 if mode != "C" else 3), str(it.get("qty") or 1), t._BOLD, 9 if mode != "C" else 8, t.WHITE, "c")
+        tx = x + b + 4 + (img + 4 if im else 0)
         if im:
-            t.draw_product_image(c, x + badge + 4, y - img, img, im)
-        ty = y - nsz - 0.5
+            t.draw_product_image(c, x + b + 4, y - img, img, im)
+        ty = y - sz - 0.5 - (1 if mode == "C" else 0)
         for s in nm:
-            t.txt(c, tx, ty, s, t._BOLD, nsz)
-            ty -= nsz + 1.5
+            t.txt(c, tx, ty, s, t._BOLD, sz)
+            ty -= sz + 1.5
         if sku:
-            t.txt(c, tx, ty, sku, t._REG, nsz - 1)
+            t.txt(c, tx, ty, sku, t._REG, sz - 1)
         y -= rh
         shown += 1
     if shown < len(items):
@@ -86,16 +113,29 @@ def _draw_lower(c, o):
     _box(c, M, y1, lw, r1)
     t._chip(c, "ALICI", M + 8, top - 13)
     ty = top - 29
-    for s in t._wrap_max(o.get("name"), t._BOLD, 10.5, lw - 16, 2):
-        t.txt(c, M + 8, ty, s, t._BOLD, 10.5)
-        ty -= 12
+    nm = None
+    for nsz in (10.5, 9.5, 8.5, 7.5):
+        nm = t._wrap_max(o.get("name"), t._BOLD, nsz, lw - 16, 2)
+        if not nm[-1].endswith("…"):
+            break
+    else:
+        nm = t._wrap_max(o.get("name"), t._BOLD, 7.5, lw - 16, 3)
+    for s in nm:
+        t.txt(c, M + 8, ty, s, t._BOLD, nsz)
+        ty -= nsz + 1.5
     if o.get("phone"):
         t.txt(c, M + 8, ty, "Tel: " + t.fmt_phone(o["phone"]), t._BOLD, 8)
         ty -= 10
     if t._clean(o.get("address")):
-        for s in t._wrap_max(o.get("address"), t._REG, 7.2, lw - 16, 5 if not o.get("phone") else 4):
-            t.txt(c, M + 8, ty, s, t._REG, 7.2)
-            ty -= 8.5
+        region_top = y1 + 24  # il/ilçe satırının üstü; adres bunun altına inmez
+        for asz, gap in ((7.2, 8.5), (6.4, 7.5), (5.8, 6.8)):
+            n = max(1, int((ty - region_top) / gap) + 1)
+            al = t._wrap_max(o.get("address"), t._REG, asz, lw - 16, n)
+            if not al[-1].endswith("…"):
+                break
+        for s in al:
+            t.txt(c, M + 8, ty, s, t._REG, asz)
+            ty -= gap
     ilce, il = t.tr_upper(t._clean(o.get("ilce"))), t.tr_upper(t._clean(o.get("il")))
     region = " / ".join(x for x in (ilce, il) if x)
     if region:

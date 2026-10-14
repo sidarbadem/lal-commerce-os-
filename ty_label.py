@@ -397,36 +397,55 @@ def _draw_label(c, d):
     ph = y - (M + th + 6)
     c.roundRect(M, y - ph, iw, ph, 9, stroke=1, fill=0)
     _chip(c, "ÜRÜNLER", M + 9, y - 14)
-    IMG = 34
     row_top = y - 26
     floor = y - ph + 5
     items = d["items"]
+    iw_text = iw - 18
+    imgs = [load_product_image(ln.get("imageUrl")) for ln in items]
+
+    def plan(mode):
+        """mode A: görselli | B: görselsiz 2 satır | C: tek satır sıkı. [(satır yüksekliği, ad satırları, kod, görsel)]"""
+        out = []
+        for ln, im in zip(items, imgs):
+            code = _clean(ln.get("stockCode") or ln.get("merchantSku"))
+            title = product_title(ln.get("productName"))
+            if mode == "C":
+                nm = _wrap_max(("%s · %s" % (code, title)) if code else title, _BOLD, 7.5, iw_text - 25, 1)
+                out.append((14.5, nm, "", None))
+                continue
+            use_img = im if mode == "A" else None
+            tx_w = iw_text - 25 - (39 if use_img else 0)
+            nm = _wrap_max(title, _BOLD, 8, tx_w, 3 if (use_img and len(items) == 1) else 2)
+            th = len(nm) * 9.5 + (9 if code else 0)
+            out.append((max(th, 34 if use_img else 0) + 5, nm, code, use_img))
+        return out
+
+    avail = row_top - floor
+    chosen = None
+    for mode in ("A", "B", "C"):
+        rows = plan(mode)
+        if sum(r[0] for r in rows) <= avail:
+            chosen = (mode, rows)
+            break
+    if chosen is None:
+        chosen = ("C", plan("C"))
+    mode, rows = chosen
     shown = 0
-    for ln in items:
-        qty = str(ln.get("quantity") or 1)
-        img = load_product_image(ln.get("imageUrl"))
-        text_x = M + 9 + 25 + (IMG + 5 if img else 0)
-        text_w = M + iw - 9 - text_x
-        nm = _wrap_max(product_title(ln.get("productName")), _BOLD, 8, text_w, 3 if (img and len(items) == 1) else 2)
-        code = _clean(ln.get("stockCode") or ln.get("merchantSku"))
-        text_h = len(nm) * 9.5 + (9 if code else 0)
-        row_h = max(text_h, IMG if img else 0) + 5
+    for ln, (row_h, nm, code, img) in zip(items, rows):
         reserve = 10 if shown + 1 < len(items) else 0
         if shown and row_top - row_h < floor + reserve:
             break
-        if not shown and row_top - row_h < floor:
-            img = None  # ilk ürün sığmıyorsa görselsiz dene
-            text_x = M + 9 + 25
-            nm = _wrap_max(product_title(ln.get("productName")), _BOLD, 8, M + iw - 9 - text_x, 2)
-            row_h = len(nm) * 9.5 + (9 if code else 0) + 7
+        qty = str(ln.get("quantity") or 1)
+        bw, bh, bf = (22, 20, 12) if mode != "C" else (20, 12, 9)
         c.setFillColorRGB(*K)
-        c.roundRect(M + 9, row_top - 20, 22, 20, 5, stroke=0, fill=1)
-        txt(c, M + 20, row_top - 14, qty, _BOLD, 12, WHITE, "c")
+        c.roundRect(M + 9, row_top - bh, bw, bh, 5 if mode != "C" else 4, stroke=0, fill=1)
+        txt(c, M + 9 + bw / 2, row_top - bh + (6 if mode != "C" else 3.5), qty, _BOLD, bf, WHITE, "c")
+        text_x = M + 9 + 25 + (39 if img else 0)
         if img:
-            draw_product_image(c, M + 9 + 25, row_top - IMG, IMG, img)
-        ty = row_top - 7
+            draw_product_image(c, M + 9 + 25, row_top - 34, 34, img)
+        ty = row_top - (7 if mode != "C" else 8.8)
         for s_ in nm:
-            txt(c, text_x, ty, s_, _BOLD, 8)
+            txt(c, text_x, ty, s_, _BOLD, 8 if mode != "C" else 7.5)
             ty -= 9.5
         if code:
             txt(c, text_x, ty, code, _REG, 7)

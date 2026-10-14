@@ -342,3 +342,40 @@ def test_bulk_stash_serves_pdf_with_same_name(monkeypatch):
     assert r.status_code == 200 and r.data == b"%PDF-y"
     assert 'filename="etiket-9.pdf"' in r.headers["Content-Disposition"]
     assert c.get("/api/paketlenecekler/etiketler/dosya/yok/etiket-9.pdf").status_code == 404
+
+
+# --- Taşma / kesilme düzeltmeleri ---
+def _pdf_text(pdf):
+    from pypdf import PdfReader
+    import io as _io
+    return " ".join((p.extract_text() or "") for p in PdfReader(_io.BytesIO(pdf)).pages)
+
+
+def test_ty_many_items_all_listed():
+    pdf = ty_label.build_label_pdf(_pkg(order="11702000111", n_lines=5))
+    txt = _pdf_text(pdf)
+    assert "ürün daha" not in txt
+
+
+def test_hb_long_name_not_truncated():
+    import hb_label
+    o = _hb_order(name="Muhammed Abdurrahman Karaçalı-Yıldızoğlu", il="Şanlıurfa", ilce="Karaköprü")
+    txt = _pdf_text(hb_label.build_hb_label(_blank_hb_pdf(), o))
+    assert "…" not in txt and "Yıldızoğlu" in txt
+
+
+def test_hb_long_address_fully_kept_and_region_present():
+    import hb_label
+    addr = ("Yenişehir Mahallesi 1234. Sokak Gül Apartmanı Blok A Kat 5 Daire 17 Karaköprü "
+            "Şanlıurfa kapıcıya bırakılmasın lütfen telefonla arayınız")
+    o = _hb_order(address=addr, il="Şanlıurfa", ilce="Karaköprü")
+    txt = _pdf_text(hb_label.build_hb_label(_blank_hb_pdf(), o))
+    assert "arayınız" in txt and "KARAKÖPRÜ / ŞANLIURFA" in txt
+
+
+def _blank_hb_pdf():
+    import io as _io
+    from reportlab.pdfgen import canvas as _cv
+    b = _io.BytesIO()
+    c = _cv.Canvas(b, pagesize=(288, 432)); c.drawString(20, 400, "HB"); c.showPage(); c.save()
+    return b.getvalue()
