@@ -47,7 +47,11 @@ def campaign_profit():
                    SUM(COALESCE(ol.marketplace_discount, 0) * COALESCE(ol.quantity, 0)) AS marketplaceDiscount,
                    SUM(COALESCE(ol.line_unit_price, 0) * COALESCE(ol.quantity, 0)
                        * COALESCE(ol.commission_rate, 0) / 100.0) AS estimatedCommission,
-                   SUM(COALESCE(pc.cost_incl_vat, 0) * COALESCE(ol.quantity, 0)) AS productCost,
+                   SUM(COALESCE(
+                       (SELECT h.cost_incl_vat FROM product_cost_history h
+                         WHERE h.sku = ol.merchant_sku AND h.valid_from_ms <= o.order_date
+                         ORDER BY h.valid_from_ms DESC LIMIT 1),
+                       pc.cost_incl_vat, 0) * COALESCE(ol.quantity, 0)) AS productCost,
                    SUM(CASE WHEN pc.sku IS NULL THEN 1 ELSE 0 END) AS missingCostLines
             FROM order_lines ol
             JOIN orders o ON o.marketplace = ol.marketplace

@@ -413,12 +413,17 @@ def _load_other_financial_totals(conn, start_ms, end_ms, order_scope=None):
     return totals
 
 
+import cost_history  # noqa: E402
+
+
 def _load_costs(conn):
     rows = conn.execute("""
         SELECT sku, cost_incl_vat, cost_excl_vat, sale_price_incl_vat, sale_price_excl_vat, product_name
         FROM product_costs
     """).fetchall()
-    return {r["sku"]: r for r in rows}
+    book = cost_history.CostBook({r["sku"]: r for r in rows})
+    book.history = cost_history.load_history_safe(conn)
+    return book
 
 
 def _load_cargo_by_order(conn):
@@ -692,7 +697,11 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
     cost_row = costs.get(effective_sku)
     missing_cost_sku = None
     if cost_row and cost_row["cost_incl_vat"] is not None:
-        cogs = cost_row["cost_incl_vat"] * (ln["quantity"] or 0)
+        unit_cost = cost_history.cost_at(
+            getattr(costs, "history", {}), effective_sku, ln["order_date"],
+            fallback=cost_row["cost_incl_vat"],
+        )
+        cogs = unit_cost * (ln["quantity"] or 0)
         missing_cost = False
     else:
         cogs = None

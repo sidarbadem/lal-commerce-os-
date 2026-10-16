@@ -400,6 +400,15 @@ def _migrate_paketlenecekler_islemleri(conn):
     """)
 
 
+def _migrate_cost_history(conn):
+    """Maliyet geçmişi (16.10.2026): bir satışın alış maliyeti SİPARİŞ TARİHİNDE
+    geçerli maliyettir; zam sonrası girilen yeni maliyet geçmiş kârı değiştirmez.
+    product_cost_history tablosunu oluşturur, mevcut maliyetleri valid_from=0 ile kopyalar."""
+    import cost_history
+    cost_history.ensure_table(conn)
+    cost_history.backfill_from_product_costs(conn)
+
+
 def _migrate_manuel_siparisler(conn):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS manuel_siparisler (
@@ -441,6 +450,7 @@ _MIGRATIONS = [
     ("2026_09_14_cargo_reconciliation", _migrate_cargo_reconciliation),
     ("2026_10_07_paketlenecekler_islemleri", _migrate_paketlenecekler_islemleri),
     ("2026_10_10_manuel_siparisler", _migrate_manuel_siparisler),
+    ("2026_10_16_cost_history", _migrate_cost_history),
 ]
 
 def init_db():
@@ -947,17 +957,21 @@ def _sync_supplier_debt(conn, rows):
     # İlgili siparişlerin durumlarını çek (iptal/iade filtresi için)
     pkg_ids = {(r.get("marketplace"), r.get("shipment_package_id")) for r in rows}
     status_map = {}
+    date_map = {}
+    import cost_history
+    history = cost_history.load_history_safe(conn)
     for mp in {p[0] for p in pkg_ids}:
         ids = [p[1] for p in pkg_ids if p[0] == mp]
         if not ids:
             continue
         id_placeholders = ",".join("?" for _ in ids)
         for row in conn.execute(
-            f"""SELECT shipment_package_id, status FROM orders
+            f"""SELECT shipment_package_id, status, order_date FROM orders
                 WHERE marketplace = ? AND shipment_package_id IN ({id_placeholders})""",
             [mp, *ids],
         ).fetchall():
             status_map[(mp, row["shipment_package_id"])] = row["status"]
+            date_map[(mp, row["shipment_package_id"])] = row["order_date"]
 
     debt_rows = []
     for r in rows:
@@ -972,6 +986,10 @@ def _sync_supplier_debt(conn, rows):
         if status in _EXCLUDED_ORDER_STATUSES.get(mp, set()):
             continue
         cost_incl_vat, tedarikci_id = cost_map[sku]
+        cost_incl_vat = cost_history.cost_at(
+            history, sku, date_map.get((mp, r.get("shipment_package_id"))),
+            fallback=cost_incl_vat,
+        )
         line_key = f"{r.get('marketplace')}:{r.get('shipment_package_id')}:{r.get('barcode')}"
         debt_rows.append({
             "tedarikci_id": tedarikci_id,
@@ -1149,6 +1167,22 @@ def clear_cargo_sync_failure(marketplace, invoice_serial_number):
 
 
 def upsert_product_costs(rows):
+    """product_costs'u günceller. cost_incl_vat DEĞİŞEN SKU'lar için maliyet geçmişine
+    'şimdiden itibaren geçerli' kayıt ekler; geçmiş satışların maliyeti değişmez.
+    Aynı değerin yeniden yazılması (örn. Excel'i tekrar yüklemek) kayıt eklemez."""
+    if not rows:
+        return
+    import cost_history
+    with get_connection() as conn:
+        cost_history.ensure_table(conn)
+        # Değişiklikten ÖNCEKİ maliyetleri geçmişe sabitle (geçmişi olmayan SKU'lar için)
+        cost_history.backfill_from_product_costs(conn)
+    _upsert_product_costs_raw(rows)
+    with get_connection() as conn:
+        cost_history.record_changes(conn, rows)
+
+
+def _upsert_product_costs_raw(rows):
     if not rows:
         return
     with get_connection() as conn:

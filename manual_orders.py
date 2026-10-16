@@ -62,6 +62,8 @@ def _validate(payload, conn, cost_hint=None):
     raw_items = payload.get("items")
     if not isinstance(raw_items, list) or not raw_items:
         raise ValueError("at least one item is required")
+    import cost_history
+    history = cost_history.load_history_safe(conn)
     items = []
     for idx, it in enumerate(raw_items, start=1):
         if not isinstance(it, dict):
@@ -79,7 +81,9 @@ def _validate(payload, conn, cost_hint=None):
         unit_price = _num(it.get("unit_price"), f"item {idx}: unit_price", default=pc["sale_price_incl_vat"])
         unit_cost = (cost_hint or {}).get(sku)
         if unit_cost is None:
-            unit_cost = pc["cost_incl_vat"]
+            unit_cost = cost_history.cost_at(
+                history, sku, order_date, fallback=pc["cost_incl_vat"]
+            )
         if unit_cost is None:
             raise ValueError(f"item {idx}: {sku} has no cost defined")
         items.append({
