@@ -400,6 +400,21 @@ def _migrate_paketlenecekler_islemleri(conn):
     """)
 
 
+def _migrate_fix_cost_excl_vat(conn):
+    """KDV hariç maliyet düzeltmesi (16.10.2026): 11.08.2026'da bu 4 SKU'nun
+    cost_incl_vat değeri KDV dahile düzeltilmişti ama cost_excl_vat eski (KDV hariç
+    girilmiş) kaldı; _sku_vat_rate bu yüzden %44 hesaplıyor, KDV hariç kâr ve
+    'Alınan KDV' bozuk çıkıyordu. Sadece cost_excl_vat güncellenir; cost_incl_vat,
+    net kâr ve updated_at DEĞİŞMEZ. Idempotent (zaten doğruysa satıra dokunmaz)."""
+    for sku in ("SH-PHM-001", "SH-TDS-01", "SH-8IN1-METER", "SH-10TF-BG"):
+        conn.execute(
+            "UPDATE product_costs SET cost_excl_vat = cost_incl_vat / 1.2 "
+            "WHERE sku = ? AND cost_incl_vat IS NOT NULL "
+            "AND (cost_excl_vat IS NULL OR ABS(cost_incl_vat / 1.2 - cost_excl_vat) > 0.005)",
+            (sku,),
+        )
+
+
 def _migrate_cost_history(conn):
     """Maliyet geçmişi (16.10.2026): bir satışın alış maliyeti SİPARİŞ TARİHİNDE
     geçerli maliyettir; zam sonrası girilen yeni maliyet geçmiş kârı değiştirmez.
@@ -451,6 +466,7 @@ _MIGRATIONS = [
     ("2026_10_07_paketlenecekler_islemleri", _migrate_paketlenecekler_islemleri),
     ("2026_10_10_manuel_siparisler", _migrate_manuel_siparisler),
     ("2026_10_16_cost_history", _migrate_cost_history),
+    ("2026_10_16_fix_cost_excl_vat", _migrate_fix_cost_excl_vat),
 ]
 
 def init_db():
