@@ -71,8 +71,7 @@
         <td>${i.hasCost
           ? `<span class="pill pill-real" style="margin-right:6px;">Tanımlı</span>
              <input type="number" step="0.01" class="inline-cost-input" data-sku="${i.sku}" value="${i.costInclVat ?? ''}" style="width:90px;">
-             <button class="inline-save-btn inline-cost-save" data-sku="${i.sku}" data-has-cost="1" title="Tedarikçiden zam geldiyse yeni maliyeti ve geçerlilik tarihini girin">Zam / Güncelle</button>
-             <button class="inline-save-btn inline-cost-delete" data-sku="${i.sku}" style="background:none; color:var(--red); border-color:var(--red);">Sil</button>`
+             <button class="inline-save-btn inline-cost-save" data-sku="${i.sku}" data-has-cost="1" title="Tedarikçiden zam geldiyse yeni maliyeti ve geçerlilik tarihini girin">Zam / Güncelle</button>`
           : `<span class="pill pill-missing" style="margin-right:6px;">Eksik</span>
              <input type="number" step="0.01" class="inline-cost-input" data-sku="${i.sku}" placeholder="Maliyet">
              <button class="inline-save-btn inline-cost-save" data-sku="${i.sku}">Kaydet</button>`
@@ -106,20 +105,6 @@
       });
     });
 
-    document.querySelectorAll('.inline-cost-delete').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const sku = btn.dataset.sku;
-        if (!confirm(`"${sku}" için tanımlı maliyeti silmek istediğine emin misin?`)) return;
-        btn.disabled = true; btn.textContent = '…';
-        try {
-          await fetch(`/api/product-cost/${encodeURIComponent(sku)}`, { method: 'DELETE' });
-          loadMargins();
-        } catch (e) {
-          showError('Maliyet silinemedi: ' + e.message);
-          btn.disabled = false; btn.textContent = 'Sil';
-        }
-      });
-    });
   }
 
   window.lalReloadMargins = () => loadMargins();  // maliyet-zam.js tabloyu yenilemek için kullanır
