@@ -170,9 +170,10 @@ def list_product_costs():
 
 @bp.route("/api/product-cost/<path:sku>", methods=["DELETE"])
 def delete_product_cost(sku):
-    with get_connection() as conn:
-        conn.execute("DELETE FROM product_costs WHERE sku = ?", (sku,))
-    return jsonify({"ok": True, "sku": sku})
+    # product_costs satırı silinirse finance_engine o SKU'nun TÜM geçmiş satışlarını
+    # "maliyetsiz" sayar (geçmiş tablosu satır yokken okunmuyor). Bu yüzden silme kapalı;
+    # maliyet değişikliği için Zam / Güncelle penceresi kullanılır.
+    return jsonify({"error": "Maliyet silinemez: geçmiş satışların kârı boşa düşer. Zam / Güncelle penceresini kullanın."}), 409
 
 
 @bp.route("/api/product-cost/<path:sku>/tedarikci", methods=["POST"])
