@@ -114,7 +114,7 @@
       '<div><span>Kâr</span><b class="' + profitCls + '">' + esc(tl(i.profit)) + '</b></div><div><span>Marj</span><b class="' + mCls + '">' + esc(pct(i.margin)) + '</b></div></div>' +
       '<div class="lal-pc-d-cost"><label for="lal-pc-cost">Maliyet (KDV dahil)</label>' +
       '<input type="number" step="0.01" id="lal-pc-cost" placeholder="Örn. 2145" value="' + esc(i.hasCost && i.costInclVat != null ? i.costInclVat : '') + '">' +
-      '<div class="lal-pc-d-actions"><button type="button" class="lal-pc-btn is-primary" data-act="save">' + (i.hasCost ? 'Güncelle' : 'Kaydet') + '</button>' +
+      '<div class="lal-pc-d-actions"><button type="button" class="lal-pc-btn is-primary" data-act="save">' + (i.hasCost ? 'Zam / Güncelle' : 'Kaydet') + '</button>' +
       (i.hasCost ? '<button type="button" class="lal-pc-btn is-danger" data-act="delete">Sil</button>' : '') + '</div></div>';
   }
 
@@ -175,6 +175,11 @@
       var rowBtn = rowNode('.inline-cost-save', sku);
       if (!rowInp || !rowBtn) return;
       rowInp.value = inp.value;
+      if (rowBtn.dataset.hasCost === '1') {
+        rowBtn.click();
+        closeDrawer();
+        return;
+      }
       var orig = t.textContent;
       t.disabled = true; t.textContent = '…';
       rowBtn.click();
