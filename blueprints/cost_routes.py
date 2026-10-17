@@ -84,6 +84,79 @@ def upsert_manual_product_cost():
     return jsonify({"ok": True, "sku": sku})
 
 
+# ---------- Maliyet geçmişi: zam / fiyat değişikliği ----------
+# Zam (change): seçilen andan SONRAKİ siparişlere uygulanır, öncesi değişmez.
+# Hata düzeltmesi (correct): bir geçmiş kaydı, geçerli olduğu TÜM dönem için değiştirir.
+
+def _maliyet_gecmisi():
+    import cost_history
+    return cost_history
+
+
+def _zam_govdesi(data):
+    ch = _maliyet_gecmisi()
+    try:
+        yeni = float(data["cost_incl_vat"])
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("'cost_incl_vat' zorunlu ve sayısal olmalı.")
+    return yeni, ch.parse_effective(data.get("effective_at"))
+
+
+@bp.route("/api/product-cost/<path:sku>/history")
+def maliyet_gecmisi_listele(sku):
+    ch = _maliyet_gecmisi()
+    with get_connection() as conn:
+        ch.ensure_table(conn)
+        return jsonify({"sku": sku, "items": ch.list_history(conn, sku)})
+
+
+@bp.route("/api/product-cost/<path:sku>/change-preview", methods=["POST"])
+def maliyet_zam_onizleme(sku):
+    ch = _maliyet_gecmisi()
+    data = request.get_json(silent=True) or {}
+    try:
+        yeni, eff = _zam_govdesi(data)
+        with get_connection() as conn:
+            ch.ensure_table(conn)
+            return jsonify(ch.describe_change(conn, sku, yeni, eff))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@bp.route("/api/product-cost/<path:sku>/change", methods=["POST"])
+def maliyet_zam_uygula(sku):
+    ch = _maliyet_gecmisi()
+    data = request.get_json(silent=True) or {}
+    try:
+        yeni, eff = _zam_govdesi(data)
+        with get_connection() as conn:
+            ch.ensure_table(conn)
+            sonuc = ch.change_cost(conn, sku, yeni, eff, source="ui", note=(data.get("note") or None))
+        return jsonify({"ok": True, **sonuc})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@bp.route("/api/product-cost/<path:sku>/history/<int:row_id>/correct", methods=["POST"])
+def maliyet_gecmisi_duzelt(sku, row_id):
+    """Hata düzeltmesi. confirm=true gelmedikçe sadece etkilenecek satır sayısını döner."""
+    ch = _maliyet_gecmisi()
+    data = request.get_json(silent=True) or {}
+    try:
+        yeni = float(data["cost_incl_vat"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "'cost_incl_vat' zorunlu ve sayısal olmalı."}), 400
+    onayli = data.get("confirm") is True
+    try:
+        with get_connection() as conn:
+            ch.ensure_table(conn)
+            sonuc = ch.correct_history_row(conn, sku, row_id, yeni, note=(data.get("note") or None),
+                                           dry_run=not onayli)
+        return jsonify({"ok": onayli, "needs_confirm": not onayli, **sonuc})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @bp.route("/api/product-costs")
 def list_product_costs():
     with get_connection() as conn:
