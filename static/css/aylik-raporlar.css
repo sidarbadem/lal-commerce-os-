@@ -1,0 +1,37 @@
+.mr-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.mr-toolbar select { min-width: 180px; }
+.mr-badge { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: rgba(128,128,128,.16); }
+.mr-badge.is-final { background: rgba(22,163,74,.16); color: #16a34a; }
+.mr-badge.is-draft { background: rgba(217,119,6,.16); color: #d97706; }
+.mr-warn { margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; font-size: 13px; background: rgba(217,119,6,.12); }
+.mr-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.mr-kpi { padding: 16px 18px; border-radius: 16px; border: 1px solid var(--lal-border, rgba(128,128,128,.22)); }
+.mr-kpi-label { font-size: 12px; opacity: .7; }
+.mr-kpi-value { font-size: 24px; font-weight: 600; margin: 6px 0 8px; font-variant-numeric: tabular-nums; }
+.mr-kpi-sub { font-size: 12px; opacity: .85; display: flex; gap: 10px; flex-wrap: wrap; }
+.mr-delta { font-variant-numeric: tabular-nums; font-weight: 600; }
+.mr-delta.is-good { color: #16a34a; }
+.mr-delta.is-bad { color: #dc2626; }
+.mr-delta.is-none { opacity: .45; font-weight: 400; }
+.mr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mr-table th, .mr-table td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--lal-border, rgba(128,128,128,.18)); font-variant-numeric: tabular-nums; }
+.mr-table th:first-child, .mr-table td:first-child { text-align: left; }
+.mr-table th { font-size: 12px; font-weight: 500; opacity: .7; }
+.mr-table tr.is-strong td { font-weight: 600; }
+.mr-sku { display: block; font-size: 11px; opacity: .55; }
+.mr-scroll { overflow-x: auto; }
+.mr-chart { width: 100%; height: auto; display: block; }
+.mr-axis { stroke: currentColor; opacity: .25; }
+.mr-bar-rev { fill: currentColor; opacity: .28; }
+.mr-bar-profit { fill: #16a34a; }
+.mr-bar-profit.is-neg { fill: #dc2626; }
+.mr-bar-rev.is-current { opacity: .6; }
+.mr-xlabel { font-size: 11px; fill: currentColor; opacity: .6; text-anchor: middle; }
+.mr-xlabel.is-current { opacity: 1; font-weight: 600; }
+.mr-legend { display: flex; gap: 16px; font-size: 12px; opacity: .75; margin-top: 8px; }
+.mr-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; }
+.mr-dot-rev { background: currentColor; opacity: .35; }
+.mr-dot-profit { background: #16a34a; }
+.mr-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.mr-tab { border: 1px solid var(--lal-border, rgba(128,128,128,.25)); background: transparent; color: inherit; padding: 6px 14px; border-radius: 999px; font-size: 13px; cursor: pointer; }
+.mr-tab.is-active { background: rgba(128,128,128,.16); font-weight: 600; }
