@@ -48,7 +48,7 @@ celery_app = Celery(
     # örneklemle manuel doğrulama yapılmadan periyodik çalıştırmak riskli.
     # qna_sync_tasks: 29.08.2026 eklendi -- AYNI kural, Beat'e otomatik
     # eklenmedi (bkz. qna_sync_tasks.py docstring'i).
-    include=["tasks", "payout_scrape_tasks", "hb_review_sync_tasks", "qna_sync_tasks", "notification_tasks"],
+    include=["tasks", "payout_scrape_tasks", "hb_review_sync_tasks", "qna_sync_tasks", "notification_tasks", "report_tasks"],
 )
 
 celery_app.conf.update(
@@ -134,5 +134,13 @@ celery_app.conf.beat_schedule = {
     "notification-detect": {
         "task": "notification_tasks.detect_notifications",
         "schedule": 60 * 5,  # her 5 dakikada bir
+    },
+    "monthly-report-generate": {
+        "task": "report_tasks.generate_previous_month_report",
+        "schedule": crontab(day_of_month=1, hour=6, minute=0),
+    },
+    "monthly-report-refresh-drafts": {
+        "task": "report_tasks.refresh_draft_reports",
+        "schedule": crontab(hour=4, minute=30),
     },
 }
