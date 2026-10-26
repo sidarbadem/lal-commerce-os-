@@ -23,6 +23,17 @@
     return '<span class="mr-delta ' + cls + '">' + sign + p.toLocaleString('tr-TR', { maximumFractionDigits: 1 }) + '%</span>';
   }
 
+  function deltaMoney(cur, prev, goodUp) {
+    if (cur == null || prev == null) return '<span class="mr-delta is-none">—</span>';
+    var d = cur - prev;
+    var cls = d === 0 ? '' : ((d > 0) === goodUp ? 'is-good' : 'is-bad');
+    var sign = d > 0 ? '+' : (d < 0 ? '−' : '');
+    return '<span class="mr-delta ' + cls + '">' + sign + tryFmt.format(Math.abs(d)) + '</span>';
+  }
+  function change(key, c, goodUp) {
+    return key === 'realNetProfit' ? deltaMoney(c.value, c.prev, goodUp) : delta(c.pct, goodUp);
+  }
+
   function getJSON(url, opts) {
     return fetch(url, opts).then(function (r) {
       return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
@@ -43,32 +54,35 @@
       var yoy = v.compare.yoy[d[0]] || {};
       return '<div class="mr-kpi"><div class="mr-kpi-label">' + esc(d[1]) + '</div>' +
         '<div class="mr-kpi-value">' + d[2](v.metrics[d[0]]) + '</div>' +
-        '<div class="mr-kpi-sub"><span>Önceki ay ' + delta(prev.pct, true) + '</span>' +
-        '<span>Geçen yıl ' + delta(yoy.pct, true) + '</span></div></div>';
+        '<div class="mr-kpi-sub"><span>Önceki ay ' + change(d[0], prev, true) + '</span>' +
+        '<span>Geçen yıl ' + change(d[0], yoy, true) + '</span></div></div>';
     }).join('');
   }
 
   function renderBreakdown(v) {
     var rows = [
       ['grossRevenue', 'Brüt ciro', true, false],
-      ['returnAmount', 'İadeler', false, false],
-      ['netRevenue', 'Net ciro', true, true],
       ['cogsTotal', 'Ürün maliyeti', false, false],
       ['commission', 'Komisyon', false, false],
+      ['serviceFee', 'Hizmet bedeli', false, false],
       ['cargoTotal', 'Kargo', false, false],
+      ['grossProfit', 'Brüt kâr', true, true],
       ['overheadTotal', 'Dönemsel giderler (iade, stopaj, platform bedeli)', false, false],
+      ['cogsReversalTotal', 'İade edilen ürünlerin maliyet geri alımı', true, false],
       ['netProfit', 'Net kâr', true, true],
       ['fixedExpenses', 'Sabit giderler', false, false],
-      ['realNetProfit', 'Gerçek net kâr', true, true]
+      ['realNetProfit', 'Gerçek net kâr', true, true],
+      ['returnAmount', 'İadeler (bilgi, dönemsel giderlerin içinde)', false, false, true],
+      ['netRevenue', 'Net ciro (bilgi)', true, false, true]
     ];
     var html = '<div class="mr-scroll"><table class="mr-table"><thead><tr><th>Kalem</th><th>Bu ay</th><th>Önceki ay</th><th>Değişim</th><th>Geçen yıl</th><th>Değişim</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       var p = v.compare.prev[r[0]] || {};
       var y = v.compare.yoy[r[0]] || {};
-      html += '<tr' + (r[3] ? ' class="is-strong"' : '') + '><td>' + esc(r[1]) + '</td>' +
+      html += '<tr' + ((r[3] || r[4]) ? ' class="' + (r[3] ? 'is-strong ' : '') + (r[4] ? 'is-info' : '') + '"' : '') + '><td>' + esc(r[1]) + '</td>' +
         '<td>' + money(v.metrics[r[0]]) + '</td>' +
-        '<td>' + money(p.prev) + '</td><td>' + delta(p.pct, r[2]) + '</td>' +
-        '<td>' + money(y.prev) + '</td><td>' + delta(y.pct, r[2]) + '</td></tr>';
+        '<td>' + money(p.prev) + '</td><td>' + change(r[0], p, r[2]) + '</td>' +
+        '<td>' + money(y.prev) + '</td><td>' + change(r[0], y, r[2]) + '</td></tr>';
     });
     $('mr-breakdown').innerHTML = html + '</tbody></table></div>';
   }
@@ -173,6 +187,7 @@
     $('mr-note').textContent = v.generatedAt ? 'Son hesaplama: ' + v.generatedAt : '';
     $('mr-empty').hidden = true;
     $('mr-content').hidden = false;
+    $('mr-title').textContent = v.label || 'Geçen ay';
     renderWarnings(v);
     renderKpis(v);
     renderBreakdown(v);
