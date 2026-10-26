@@ -12,7 +12,8 @@ TR_MONTHS = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
 
 METRIC_KEYS = ["grossRevenue", "returnAmount", "netRevenue", "cogsTotal", "commission",
-               "cargoTotal", "stoppage", "platformServiceFee", "overheadTotal", "netProfit"]
+               "cargoTotal", "stoppage", "platformServiceFee", "overheadTotal", "netProfit",
+               "serviceFee", "cogsReversalTotal", "grossProfit"]
 
 
 def ensure_schema(conn):
