@@ -173,6 +173,120 @@ def _compare_metrics(cur, other):
     return out
 
 
+def _tl(v):
+    if v is None:
+        return "-"
+    s = "{:,.0f}".format(abs(v)).replace(",", ".")
+    return ("-" if v < 0 else "") + "\u20ba" + s
+
+
+def _num1(v):
+    return "{:.1f}".format(v).replace(".", ",")
+
+
+def _delta_text(entry):
+    if not entry or entry.get("prev") is None or entry.get("value") is None:
+        return None
+    diff = entry["value"] - entry["prev"]
+    if abs(diff) < 0.5:
+        return "önceki ayla aynı seviyede"
+    word = "arttı" if diff > 0 else "azaldı"
+    if entry["prev"] > 0:
+        return "önceki aya göre %%%s %s" % (_num1(abs(diff) / entry["prev"] * 100), word)
+    return "önceki aya göre %s %s" % (_tl(abs(diff)), word)
+
+
+_MP_NAMES = {"trendyol": "Trendyol", "hepsiburada": "Hepsiburada"}
+
+
+def _marketplace_items(view):
+    mp = view.get("byMarketplace")
+    if isinstance(mp, dict):
+        return list(mp.items())
+    if isinstance(mp, list):
+        return [(x.get("marketplace"), x) for x in mp if isinstance(x, dict)]
+    return []
+
+
+def build_notes(view):
+    notes = []
+    m = view.get("metrics") or {}
+    prev = (view.get("compare") or {}).get("prev") or {}
+    label = view.get("label") or view.get("period") or ""
+
+    gross = m.get("grossRevenue")
+    net_rev = m.get("netRevenue")
+    net = m.get("netProfit")
+    if net is not None:
+        text = "%s: net ciro %s, net kâr %s oldu" % (label, _tl(net_rev), _tl(net))
+        d = _delta_text(prev.get("netProfit"))
+        if d:
+            text += "; net kâr " + d
+        notes.append(text + ".")
+
+    real = m.get("realNetProfit")
+    fixed = m.get("fixedExpenses")
+    if real is not None and fixed is not None:
+        if real >= 0:
+            notes.append("Sabit giderler (%s) düşüldükten sonra gerçek net kâr %s kaldı." % (_tl(fixed), _tl(real)))
+        else:
+            notes.append("Sabit giderler (%s) düşüldükten sonra ay %s zararla kapandı." % (_tl(fixed), _tl(abs(real))))
+
+    if net is not None and gross:
+        notes.append("Net kâr marjı (brüt ciroya göre): %%%s." % _num1(net / gross * 100))
+
+    ret = m.get("returnAmount")
+    if ret and gross:
+        notes.append("İadeler toplam %s tuttu, brüt ciroya oranı %%%s." % (_tl(ret), _num1(ret / gross * 100)))
+
+    orders = m.get("orderCount")
+    units = m.get("unitCount")
+    if orders:
+        text = "%d sipariş, %d adet satıldı; ortalama sepet %s" % (orders, units or 0, _tl(m.get("avgBasket")))
+        d = _delta_text(prev.get("avgBasket"))
+        if d:
+            text += " (" + d + ")"
+        notes.append(text + ".")
+
+    items = [(k, x) for k, x in _marketplace_items(view)
+             if isinstance((x or {}).get("grossRevenue"), (int, float))]
+    total = sum(x["grossRevenue"] for _, x in items)
+    if len(items) > 1 and total > 0:
+        parts = ["%s %%%s" % (_MP_NAMES.get(k, k), _num1(x["grossRevenue"] / total * 100)) for k, x in items]
+        notes.append("Brüt ciro dağılımı: " + ", ".join(parts) + ".")
+        best = max(items, key=lambda it: it[1].get("netProfit") or 0)
+        notes.append("Net kâra en çok katkı veren pazaryeri %s (%s)." % (
+            _MP_NAMES.get(best[0], best[0]), _tl(best[1].get("netProfit"))))
+
+    top = (view.get("topProfit") or [])[:1]
+    if top:
+        p = top[0]
+        name = str(p.get("productName") or p.get("sku") or "")[:60]
+        sku = p.get("sku")
+        notes.append("En çok kâr getiren ürün: %s%s, %s kâr." % (
+            name, " (%s)" % sku if sku else "", _tl(p.get("profit"))))
+        loss = view.get("lossMaking") or []
+        if loss:
+            names = ", ".join(str(x.get("sku") or x.get("productName") or "")[:30] for x in loss[:3])
+            notes.append("%d ürün zarar etti (en çok: %s)." % (len(loss), names))
+        else:
+            notes.append("Zarar eden ürün yok.")
+
+    dq = view.get("dataQuality") or {}
+    missing = dq.get("ordersMissingCargo") or 0
+    est = dq.get("linesEstimated") or 0
+    skus = dq.get("skusMissingCost") or []
+    if missing > 0:
+        notes.append("Kargo faturası bekleyen %d sipariş var; net kâr tahmini kargo tutarıyla hesaplandı, fatura geldikçe değişebilir." % missing)
+    if est > 0:
+        notes.append("%d satırın hakedişi henüz kesinleşmedi; bu satırlar tahmini değerle hesaplandı." % est)
+    if skus:
+        notes.append("Maliyeti girilmemiş ürün var: " + ", ".join(str(x) for x in skus[:6]) + ".")
+    if view.get("status") == "taslak":
+        notes.append("Bu rapor taslaktır; veriler kesinleştikçe rakamlar değişebilir.")
+    return notes
+
+
 def load_report_view(conn, period):
     cur = get_report(conn, period)
     if cur is None:
@@ -204,7 +318,7 @@ def load_report_view(conn, period):
     available = [{"period": r["period"], "status": r["status"]} for r in
                  conn.execute("SELECT period, status FROM monthly_reports ORDER BY period DESC").fetchall()]
 
-    return {
+    view = {
         "period": period,
         "label": cur["data"]["label"],
         "status": cur["status"],
@@ -225,6 +339,8 @@ def load_report_view(conn, period):
         "series": series,
         "availablePeriods": available,
     }
+    view["notes"] = build_notes(view)
+    return view
 
 
 def _notify_ready(conn, period, data):
