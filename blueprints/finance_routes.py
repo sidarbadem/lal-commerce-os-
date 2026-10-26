@@ -67,7 +67,7 @@ def api_invoice_planning():
         return jsonify({"error": "month YYYY-MM biçiminde olmalı."}), 400
     with get_connection() as conn:
         invoices = [dict(row) for row in conn.execute(
-            "SELECT id,invoice_date,description,amount_ex_vat,vat_amount FROM business_invoices "
+            "SELECT id,invoice_date,description,amount_ex_vat,vat_amount,deductible_vat FROM business_invoices "
             "WHERE invoice_date >= ? AND invoice_date < ? ORDER BY invoice_date,id",
             (start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")),
         ).fetchall()]
@@ -81,6 +81,7 @@ def api_invoice_planning():
     totals = summary["totals"]
     target = float(target_row["target_profit"]) if target_row else 0.0
     invoice_total = sum(float(row["amount_ex_vat"]) for row in invoices)
+    invoice_deductible_vat = sum(float(row["vat_amount"]) for row in invoices if row["deductible_vat"])
     operating_profit = float(totals.get("operatingProfit") or 0)
     remaining = max(0.0, operating_profit - invoice_total - target)
     return jsonify({
@@ -90,6 +91,8 @@ def api_invoice_planning():
         "target_profit": round(target, 2),
         "operating_profit": round(operating_profit, 2),
         "remaining_invoice_need": round(remaining, 2),
+        "invoice_deductible_vat": round(invoice_deductible_vat, 2),
+        "vat_payable_after_invoices_estimate": round(float(totals.get("vatPayableEstimate") or 0) - invoice_deductible_vat, 2),
         "month_complete": is_complete,
         "warning": None if is_complete else "Ay sonu kesinleşmedi; tutar dönem sonu hesabı değildir.",
         "profit_status": "Tahmini (KDV varsayımlı)" if totals.get("vatAssumed") else "Tahmini",
@@ -104,16 +107,19 @@ def api_create_invoice():
         description = str(data.get("description") or "").strip()
         amount = float(data.get("amount_ex_vat"))
         vat_amount = float(data.get("vat_amount") or 0)
+        deductible_vat = data.get("deductible_vat", True)
+        if not isinstance(deductible_vat, bool):
+            raise ValueError
         if not description or not math.isfinite(amount) or not math.isfinite(vat_amount) or amount < 0 or vat_amount < 0:
             raise ValueError
     except (TypeError, ValueError):
         return jsonify({"error": "Tarih, açıklama ve sıfırdan küçük olmayan sayısal tutarlar gerekli."}), 400
     with get_connection() as conn:
         cur = conn.execute(
-            "INSERT INTO business_invoices(invoice_date,description,amount_ex_vat,vat_amount) VALUES(?,?,?,?)",
-            (invoice_date.isoformat(), description, amount, vat_amount),
+            "INSERT INTO business_invoices(invoice_date,description,amount_ex_vat,vat_amount,deductible_vat) VALUES(?,?,?,?,?)",
+            (invoice_date.isoformat(), description, amount, vat_amount, int(deductible_vat)),
         )
-        row = conn.execute("SELECT id,invoice_date,description,amount_ex_vat,vat_amount FROM business_invoices WHERE id=?", (cur.lastrowid,)).fetchone()
+        row = conn.execute("SELECT id,invoice_date,description,amount_ex_vat,vat_amount,deductible_vat FROM business_invoices WHERE id=?", (cur.lastrowid,)).fetchone()
     return jsonify({"ok": True, "item": dict(row)}), 201
 
 

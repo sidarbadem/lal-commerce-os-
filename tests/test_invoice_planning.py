@@ -26,10 +26,13 @@ def test_invoice_planning_uses_operating_profit_and_excludes_vat(client, db, mon
     assert data["operating_profit"] == 1000
     assert data["invoice_total_ex_vat"] == 200
     assert data["remaining_invoice_need"] == 300
+    assert data["invoice_deductible_vat"] == 40
+    assert data["vat_payable_after_invoices_estimate"] == 210
     today = date.today()
     assert data["month_complete"] is ((2026, 10) < (today.year, today.month))
     assert data["profit_status"] == "Tahmini (KDV varsayımlı)"
     assert data["invoices"][0]["vat_amount"] == 40
+    assert data["invoices"][0]["deductible_vat"] == 1
 
     with get_connection() as conn:
         assert conn.execute("SELECT COUNT(*) FROM business_invoices").fetchone()[0] == 1
@@ -46,3 +49,20 @@ def test_invoice_need_never_goes_below_zero(client, db, monkeypatch):
     })
     response = client.get("/api/invoice-planning?month=2026-10", headers=headers)
     assert response.get_json()["remaining_invoice_need"] == 0
+
+
+def test_invoice_vat_can_be_marked_not_deductible(client, db, monkeypatch):
+    monkeypatch.setattr("blueprints.finance_routes.compute_profit_summary", lambda **kwargs: {
+        "totals": {"operatingProfit": 500, "vatPayableEstimate": 240, "vatAssumed": False}
+    })
+    headers = auth_headers()
+    response = client.post("/api/invoices", headers=headers, json={
+        "date": "2026-10-10", "description": "İndirilmeyecek KDV", "amount_ex_vat": 100,
+        "vat_amount": 20, "deductible_vat": False,
+    })
+    assert response.status_code == 201
+    response = client.get("/api/invoice-planning?month=2026-10", headers=headers)
+    data = response.get_json()
+    assert data["invoice_deductible_vat"] == 0
+    assert data["vat_payable_after_invoices_estimate"] == 240
+    assert data["invoices"][0]["deductible_vat"] == 0

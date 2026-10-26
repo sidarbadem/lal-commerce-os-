@@ -272,6 +272,13 @@ def _migrate_invoice_planning(conn):
     """)
 
 
+def _migrate_invoice_deductible_vat(conn):
+    """Mark input VAT from invoices that can be deducted in the VAT estimate."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(business_invoices)")}
+    if "deductible_vat" not in existing:
+        conn.execute("ALTER TABLE business_invoices ADD COLUMN deductible_vat INTEGER NOT NULL DEFAULT 1 CHECK (deductible_vat IN (0,1))")
+
+
 def _migrate_supplier_debt_v2(conn):
     """Toptancı borcu düzeltmeleri (11.08.2026):
     1) tedarikci_borc_hareketleri.tip CHECK kısıtına 'duzeltme' eklenir —
@@ -496,6 +503,7 @@ _MIGRATIONS = [
     ("2026_08_09_growth_columns", _migrate_growth_columns),
     ("2026_10_26_return_conditions", _migrate_return_conditions),
     ("2026_10_26_invoice_planning", _migrate_invoice_planning),
+    ("2026_10_26_invoice_deductible_vat", _migrate_invoice_deductible_vat),
     ("2026_08_11_supplier_debt_v2", _migrate_supplier_debt_v2),
     ("2026_08_24_review_first_synced_at", _migrate_review_first_synced_at),
     ("2026_09_03_hb_discount_breakdown", _migrate_hb_discount_breakdown),

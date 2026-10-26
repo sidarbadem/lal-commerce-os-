@@ -19,7 +19,7 @@
   }
 
   async function load() {
-    tbody.innerHTML = '<tr><td colspan="5">Yükleniyor…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6">Yükleniyor…</td></tr>';
     const response = await fetch(`/api/invoice-planning?month=${encodeURIComponent($('inv-month').value)}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Fatura ihtiyacı yüklenemedi.');
@@ -32,12 +32,15 @@
     tbody.innerHTML = invoices.length ? invoices.map(item => `<tr>
       <td>${escapeHtml(item.invoice_date)}</td><td>${escapeHtml(item.description)}</td>
       <td>${money(item.amount_ex_vat)}</td><td>${money(item.vat_amount)}</td>
+      <td>${item.deductible_vat ? 'Evet' : 'Hayır'}</td>
       <td><button class="lal-btn inv-delete" data-id="${Number(item.id)}">Sil</button></td></tr>`).join('')
-      : '<tr><td colspan="5">Bu ay için fatura kaydı yok.</td></tr>';
+      : '<tr><td colspan="6">Bu ay için fatura kaydı yok.</td></tr>';
     $('inv-summary').innerHTML = `<p><strong>Faaliyet kârı:</strong> ${money(data.operating_profit)}</p>
       <p><strong>Girilen faturalar (KDV hariç):</strong> ${money(data.invoice_total_ex_vat)}</p>
       <p><strong>Hedef kâr:</strong> ${money(data.target_profit)}</p>
       <p><strong>Kalan fatura ihtiyacı:</strong> ${money(data.remaining_invoice_need)}</p>
+      <p><strong>Faturalardan indirilecek KDV:</strong> ${money(data.invoice_deductible_vat)}</p>
+      <p><strong>Tahmini ödenecek KDV (faturalar dâhil):</strong> ${money(data.vat_payable_after_invoices_estimate)}</p>
       <p class="panel-note">Kâr durumu: ${escapeHtml(data.profit_status || 'Tahmini')}</p>`;
     tbody.querySelectorAll('.inv-delete').forEach(button => button.addEventListener('click', async () => {
       if (!window.confirm('Bu fatura kaydı silinsin mi?')) return;
@@ -73,13 +76,15 @@
       const response = await fetch('/api/invoices', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: $('inv-date').value, description: $('inv-description').value,
-          amount_ex_vat: $('inv-amount').value, vat_amount: $('inv-vat').value })
+          amount_ex_vat: $('inv-amount').value, vat_amount: $('inv-vat').value,
+          deductible_vat: $('inv-deductible-vat').checked })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Fatura kaydedilemedi.');
       $('inv-description').value = '';
       $('inv-amount').value = '';
       $('inv-vat').value = '';
+      $('inv-deductible-vat').checked = true;
       showMessage('inv-msg', 'Fatura kaydedildi.', false);
       await load();
     } catch (error) { showMessage('inv-msg', error.message, true); }

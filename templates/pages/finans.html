@@ -37,11 +37,12 @@
         <div class="lal-field lal-field-grow"><label for="inv-description">Açıklama</label><input type="text" id="inv-description" placeholder="Örn. stok alımı"></div>
         <div class="lal-field"><label for="inv-amount">KDV hariç tutar (₺)</label><input type="number" step="0.01" min="0" id="inv-amount"></div>
         <div class="lal-field"><label for="inv-vat">KDV tutarı (₺)</label><input type="number" step="0.01" min="0" id="inv-vat" placeholder="Boşsa 0"></div>
+        <div class="lal-field"><label for="inv-deductible-vat">KDV indirilecek</label><input type="checkbox" id="inv-deductible-vat" checked></div>
         <button class="lal-btn lal-btn-primary" id="inv-submit">Fatura ekle</button>
       </div>
       <div id="inv-msg" class="lal-form-msg is-hidden"></div>
       <div class="table-scroll">
-        <table><thead><tr><th>Tarih</th><th>Açıklama</th><th>KDV hariç</th><th>KDV</th><th></th></tr></thead><tbody id="inv-tbody"><tr><td colspan="5">Yükleniyor…</td></tr></tbody></table>
+        <table><thead><tr><th>Tarih</th><th>Açıklama</th><th>KDV hariç</th><th>KDV</th><th>KDV indirilecek</th><th></th></tr></thead><tbody id="inv-tbody"><tr><td colspan="6">Yükleniyor…</td></tr></tbody></table>
       </div>
       <div class="lal-mt-4" id="inv-summary"></div>
     </div>
