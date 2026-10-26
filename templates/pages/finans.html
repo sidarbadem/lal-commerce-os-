@@ -15,9 +15,28 @@
   <div class="lal-tabs" id="finans-tabs">
     <button type="button" class="lal-tab is-active" data-tab="fin-genel-bakis">Genel Bakış</button>
     <button type="button" class="lal-tab" data-tab="fin-sabit-giderler">Sabit Giderler</button>
+    <button type="button" class="lal-tab" data-tab="fin-iadeler">İadeler</button>
     <button type="button" class="lal-tab" data-tab="fin-kdv-ayarlari">KDV &amp; Gider Türleri</button>
     <button type="button" class="lal-tab" data-tab="fin-hakedis-takvimi">Hakediş Takvimi</button>
     <button type="button" class="lal-tab" data-tab="fin-toptanci-borcu">Toptancı Borcu</button>
+  </div>
+
+  <div class="lal-tab-panel" id="fin-iadeler">
+    <div class="panel">
+      <h2>İade edilen ürünün durumu</h2>
+      <p class="panel-note">Satılabilir iadelerde ürün maliyeti iade ayında geri eklenir. Hasarlı veya kayıp seçilen iadelerde maliyet geri eklenmez. Eşleşmesi doğrulanmayan iadeler faaliyet kârında satıştan düşer; maliyet geri çevrilmez ve raporda listelenir.</p>
+      <div class="lal-field-row lal-mb-4">
+        <div class="lal-field"><label for="ret-month">İade ayı</label><input type="month" id="ret-month"></div>
+        <button class="lal-btn" id="ret-refresh">Yenile</button>
+      </div>
+      <div id="ret-msg" class="lal-form-msg is-hidden"></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Tarih</th><th>Pazaryeri</th><th>Sipariş no</th><th>SKU / Barkod</th><th>İade tutarı</th><th>Eşleşme</th><th>Ürün durumu</th></tr></thead>
+          <tbody id="ret-tbody"><tr><td colspan="7">İadeler yükleniyor…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- === GENEL BAKIŞ === -->
@@ -218,6 +237,7 @@
 
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/finans-giderler.js') }}"></script>
+<script src="{{ url_for('static', filename='js/finans-iadeler.js') }}"></script>
 <script src="{{ url_for('static', filename='js/payout-calendar.js') }}"></script>
 <script src="{{ url_for('static', filename='js/toptanci-borcu.js') }}"></script>
 <script>

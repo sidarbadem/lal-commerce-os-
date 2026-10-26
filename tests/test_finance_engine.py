@@ -581,6 +581,85 @@ def _setup_line(spid, sku, quantity, unit_price, cost_incl_vat, now_ms,
         }])
 
 
+def test_return_falls_back_to_order_number_and_sku_with_partial_amount(db):
+    now_ms = int(datetime.now().timestamp() * 1000)
+    _setup_line(7301, "SKU-RET-MATCH", 1, 100.0, 40.0, now_ms, "RET-MATCH-1")
+    upsert_settlements([
+        _settlement_row(id="ret-match-sale", barcode="SKU-RET-MATCH", shipment_package_id=7301,
+                        credit=100.0, commission_amount=10.0, seller_revenue=90.0,
+                        order_number="RET-MATCH-1", transaction_date=now_ms),
+        _settlement_row(id="ret-match-event", barcode="SKU-RET-MATCH", shipment_package_id=9999,
+                        transaction_type="Return", raw_transaction_type="İade", debt=50.0,
+                        order_number="RET-MATCH-1", transaction_date=now_ms),
+    ])
+
+    summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
+    line = next(r for r in summary["lines"] if r["orderNumber"] == "RET-MATCH-1")
+    assert line["returnAmount"] == pytest.approx(round(50 / 1.2, 2))
+    assert line["cogsReversal"] == pytest.approx(round((40 / 1.1) * 0.5, 2))
+    assert summary["totals"]["vatOnReturns"] == pytest.approx(round(50 - 50 / 1.2, 2))
+    match = next(r for r in summary["totals"]["matchedReturns"] if r["id"] == "ret-match-event")
+    assert match["method"] == "order_number+SKU"
+    assert summary["totals"]["unmatchedReturns"] == []
+
+
+def test_multi_quantity_return_allocates_by_amount_to_matching_sku(db):
+    now_ms = int(datetime.now().timestamp() * 1000)
+    _setup_line(7302, "SKU-MULTI-A", 2, 100.0, 40.0, now_ms, "RET-MULTI")
+    _setup_line(7303, "SKU-MULTI-B", 1, 300.0, 90.0, now_ms, "RET-MULTI")
+    upsert_settlements([
+        _settlement_row(id="multi-sale-a", barcode="SKU-MULTI-A", shipment_package_id=7302,
+                        credit=200.0, commission_amount=20.0, seller_revenue=180.0,
+                        order_number="RET-MULTI", transaction_date=now_ms),
+        _settlement_row(id="multi-sale-b", barcode="SKU-MULTI-B", shipment_package_id=7303,
+                        credit=300.0, commission_amount=30.0, seller_revenue=270.0,
+                        order_number="RET-MULTI", transaction_date=now_ms),
+        _settlement_row(id="multi-return-a", barcode="SKU-MULTI-A", shipment_package_id=9996,
+                        transaction_type="Return", raw_transaction_type="İade", debt=100.0,
+                        order_number="RET-MULTI", transaction_date=now_ms),
+    ])
+    summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
+    by_sku = {r["sku"]: r for r in summary["lines"]}
+    assert by_sku["SKU-MULTI-A"]["returnAmount"] == pytest.approx(round(100 / 1.2, 2))
+    assert by_sku["SKU-MULTI-A"]["cogsReversal"] == pytest.approx(round((80 / 1.1) * 0.5, 2))
+    assert by_sku["SKU-MULTI-B"]["returnAmount"] == pytest.approx(0.0)
+
+
+def test_return_fallback_rejects_ambiguous_multi_package_sku(db):
+    now_ms = int(datetime.now().timestamp() * 1000)
+    _setup_line(7310, "SKU-AMBIG", 1, 100.0, 40.0, now_ms, "RET-AMBIG")
+    _setup_line(7311, "SKU-AMBIG", 1, 100.0, 40.0, now_ms, "RET-AMBIG")
+    upsert_settlements([
+        _settlement_row(id="ret-ambig", barcode="SKU-AMBIG", shipment_package_id=9998,
+                        transaction_type="Return", raw_transaction_type="İade", debt=50.0,
+                        order_number="RET-AMBIG", transaction_date=now_ms),
+    ])
+    summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
+    assert summary["totals"]["cogsReversalTotal"] == pytest.approx(0.0)
+    assert summary["totals"]["unmatchedReturns"][0]["reason"] == "birden fazla satış adayı"
+
+
+def test_damaged_return_deducts_revenue_without_reversing_cost(db):
+    now_ms = int(datetime.now().timestamp() * 1000)
+    _setup_line(7320, "SKU-RET-DAMAGED", 1, 100.0, 40.0, now_ms, "RET-DAMAGED")
+    upsert_settlements([
+        _settlement_row(id="ret-damaged-sale", barcode="SKU-RET-DAMAGED", shipment_package_id=7320,
+                        credit=100.0, commission_amount=10.0, seller_revenue=90.0,
+                        order_number="RET-DAMAGED", transaction_date=now_ms),
+        _settlement_row(id="ret-damaged-event", barcode="SKU-RET-DAMAGED", shipment_package_id=9997,
+                        transaction_type="Return", raw_transaction_type="İade", debt=100.0,
+                        order_number="RET-DAMAGED", transaction_date=now_ms),
+    ])
+    with get_connection() as conn:
+        conn.execute("INSERT INTO return_conditions (marketplace,settlement_id,condition) VALUES (?,?,?)",
+                     ("trendyol", "ret-damaged-event", "damaged"))
+    summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
+    line = next(r for r in summary["lines"] if r["orderNumber"] == "RET-DAMAGED")
+    assert line["returnAmount"] == pytest.approx(round(100 / 1.2, 2))
+    assert line["cogsReversal"] is None
+    assert line["cogsReversalNote"] == "damaged_or_lost"
+
+
 def test_cogs_reversal_full_return(db):
     """Tam iade (transaction_type='Return'): cogsReversal = TAM COGS (oran=1.0)."""
     now_ms = int(datetime.now().timestamp() * 1000)

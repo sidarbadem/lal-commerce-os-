@@ -1,29 +1,24 @@
-import requests
+"""Manual Hepsiburada cookie/session probe; never run as an automated test."""
 
-s = requests.Session()
-s.headers.update({
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
-})
+import pytest
 
-page_url = "https://www.hepsiburada.com/angelsin-siyah-yuksel-bel-bikini-takim-renkli-detaylarla-38-beden-80-polyamid-20-likra-p-HBV00000ONEUV-yorumlari"
-r1 = s.get(page_url)
-print("Sayfa status:", r1.status_code)
-print("Toplanan cookieler:", s.cookies.get_dict())
-print("---")
+pytestmark = pytest.mark.skip(reason="Canlı Hepsiburada oturumu ağ testi; otomatik koşuda atlanır.")
 
-api_url = "https://user-content-gw-hermes.hepsiburada.com/queryapi/v2/ApprovedUserContents"
-params = {
-    "sku": "HBV00000ONEUV",
-    "from": 0,
-    "size": 10,
-    "includeSiblingVariantContents": "true",
-    "includeSummary": "true",
-}
-s.headers.update({
-    "Referer": page_url,
-    "Origin": "https://www.hepsiburada.com",
-    "Accept": "application/json",
-})
-r2 = s.get(api_url, params=params)
-print("API status:", r2.status_code)
-print(r2.text[:500])
+
+def test_hb_session_live_probe():
+    import requests
+
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (compatible; LAL test probe)",
+        "Accept": "application/json",
+    })
+    page_url = "https://www.hepsiburada.com/"
+    session.get(page_url, timeout=10)
+    response = session.get(
+        "https://user-content-gw-hermes.hepsiburada.com/queryapi/v2/ApprovedUserContents",
+        params={"sku": "HBV00000ONEUV", "from": 0, "size": 10},
+        headers={"Referer": page_url, "Origin": page_url.rstrip("/")},
+        timeout=10,
+    )
+    assert response.status_code == 200

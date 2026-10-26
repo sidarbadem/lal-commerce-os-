@@ -10,7 +10,7 @@ cost_routes.py / stock_routes.py / payout_routes.py ile aynı desen.
 app.py'de kayıt: app.register_blueprint(finance_routes.bp)
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 
@@ -23,7 +23,9 @@ from database import (
     save_expense_type_setting,
     list_vat_settings,
     save_vat_setting,
+    get_connection,
 )
+from finance_engine import compute_profit_summary
 from sync_lock import sync_lock_status
 from sync_core import (
     DATA_START_DATE,
@@ -42,6 +44,78 @@ from sync_core import (
 )
 
 bp = Blueprint("finance_routes", __name__)
+
+
+@bp.route("/api/returns", methods=["GET", "POST"])
+def api_returns():
+    """List returns and persist whether returned goods can be resold."""
+    if request.method == "GET":
+        month = (request.args.get("month") or "").strip()
+        params = []
+        date_clause = ""
+        if month:
+            try:
+                start = int(datetime.strptime(month, "%Y-%m").timestamp() * 1000)
+                year, mon = map(int, month.split("-"))
+                end_dt = datetime(year + (mon == 12), 1 if mon == 12 else mon + 1, 1)
+                end = int(end_dt.timestamp() * 1000)
+            except (ValueError, TypeError):
+                return jsonify({"error": "month YYYY-MM biçiminde olmalı."}), 400
+            date_clause = " AND s.transaction_date >= ? AND s.transaction_date < ?"
+            params.extend([start, end])
+        with get_connection() as conn:
+            rows = conn.execute("""
+                SELECT s.id,s.marketplace,s.transaction_date,s.order_number,s.barcode,
+                       s.description,COALESCE(s.debt,0)-COALESCE(s.credit,0) AS amount,
+                       COALESCE(rc.condition,'sellable') AS condition
+                FROM settlements s LEFT JOIN return_conditions rc
+                  ON rc.marketplace=s.marketplace AND rc.settlement_id=s.id
+                WHERE (s.transaction_type='Return'
+                       OR s.transaction_type IN ('ManualRefund','ManualRefundCancel')
+                       OR s.raw_transaction_type IN ('İade','Return'))
+            """ + date_clause + " ORDER BY s.transaction_date DESC", params).fetchall()
+        items = [dict(r) for r in rows]
+        if month:
+            summary = compute_profit_summary(
+                start_dt=datetime.fromtimestamp(start / 1000),
+                end_dt=datetime.fromtimestamp(end / 1000) - timedelta(milliseconds=1),
+            )
+            matched = {r["id"]: r for r in summary["totals"].get("matchedReturns", [])}
+            uncertain = {r["id"]: r for r in summary["totals"].get("unmatchedReturns", [])}
+            for item in items:
+                if item["id"] in matched:
+                    item["match_status"] = "Eşleşti"
+                    item["match_method"] = matched[item["id"]]["method"]
+                elif item["id"] in uncertain:
+                    item["match_status"] = "Kontrol gerekli"
+                    item["match_reason"] = uncertain[item["id"]]["reason"]
+                else:
+                    item["match_status"] = "Bu dönemin dışında"
+        return jsonify({"items": items})
+
+    data = request.get_json(silent=True) or {}
+    marketplace = str(data.get("marketplace") or "").strip().lower()
+    settlement_id = str(data.get("settlement_id") or "").strip()
+    condition = str(data.get("condition") or "").strip().lower()
+    if marketplace not in ("trendyol", "hepsiburada") or not settlement_id:
+        return jsonify({"error": "Pazaryeri ve iade kayıt numarası gerekli."}), 400
+    if condition not in ("sellable", "damaged", "lost"):
+        return jsonify({"error": "condition sellable, damaged veya lost olmalı."}), 400
+    with get_connection() as conn:
+        exists = conn.execute("""
+            SELECT 1 FROM settlements WHERE marketplace=? AND id=? AND
+              (transaction_type='Return' OR transaction_type IN ('ManualRefund','ManualRefundCancel')
+               OR raw_transaction_type IN ('İade','Return'))
+        """, (marketplace, settlement_id)).fetchone()
+        if not exists:
+            return jsonify({"error": "İade kaydı bulunamadı."}), 404
+        conn.execute("""
+            INSERT INTO return_conditions (marketplace,settlement_id,condition)
+            VALUES (?,?,?) ON CONFLICT(marketplace,settlement_id) DO UPDATE SET
+              condition=excluded.condition,updated_at=datetime('now','localtime')
+        """, (marketplace, settlement_id, condition))
+    return jsonify({"ok": True, "marketplace": marketplace,
+                    "settlement_id": settlement_id, "condition": condition})
 
 
 @bp.route("/api/sync-finance", methods=["POST"])

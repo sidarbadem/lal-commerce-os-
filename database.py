@@ -236,6 +236,20 @@ def _migrate_growth_columns(conn):
         conn.execute("ALTER TABLE order_lines ADD COLUMN marketplace_discount REAL")
 
 
+def _migrate_return_conditions(conn):
+    """Per-return condition flags. Existing returns default to resalable."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS return_conditions (
+            marketplace TEXT NOT NULL,
+            settlement_id TEXT NOT NULL,
+            condition TEXT NOT NULL DEFAULT 'sellable'
+                CHECK (condition IN ('sellable', 'damaged', 'lost')),
+            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+            PRIMARY KEY (marketplace, settlement_id)
+        )
+    """)
+
+
 def _migrate_supplier_debt_v2(conn):
     """Toptancı borcu düzeltmeleri (11.08.2026):
     1) tedarikci_borc_hareketleri.tip CHECK kısıtına 'duzeltme' eklenir —
@@ -458,6 +472,7 @@ def _migrate_manuel_siparisler(conn):
 _MIGRATIONS = [
     ("2026_07_28_composite_marketplace_keys", _migrate_composite_keys),
     ("2026_08_09_growth_columns", _migrate_growth_columns),
+    ("2026_10_26_return_conditions", _migrate_return_conditions),
     ("2026_08_11_supplier_debt_v2", _migrate_supplier_debt_v2),
     ("2026_08_24_review_first_synced_at", _migrate_review_first_synced_at),
     ("2026_09_03_hb_discount_breakdown", _migrate_hb_discount_breakdown),

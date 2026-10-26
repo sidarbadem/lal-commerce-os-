@@ -367,6 +367,141 @@ def _load_return_totals(conn, start_ms, end_ms, order_scope=None):
     return totals
 
 
+def _resolve_return_allocations(conn, start_ms, end_ms, line_rows, settlement_totals_all):
+    """Resolve returns by exact package/barcode, then order number + SKU.
+
+    No guess is made when there is not exactly one order-line candidate or
+    cumulative refund exceeds the source line's gross value. Return amounts
+    are money-based because marketplace return records do not carry quantity.
+    """
+    return_clause = "(transaction_type='Return' OR transaction_type IN ('ManualRefund','ManualRefundCancel') OR raw_transaction_type IN ('İade','Return'))"
+    period_rows = conn.execute(f"""
+        SELECT id,marketplace,transaction_date,order_number,shipment_package_id,barcode,
+               COALESCE(debt,0)-COALESCE(credit,0) AS amount
+        FROM settlements WHERE {return_clause} AND transaction_date BETWEEN ? AND ?
+    """, (start_ms, end_ms)).fetchall()
+    order_numbers = sorted({r["order_number"] for r in period_rows if r["order_number"]})
+    package_ids = sorted({r["shipment_package_id"] for r in period_rows if r["shipment_package_id"] is not None})
+    lookup = []
+    lookup_params = [end_ms]
+    relevant = ["transaction_date BETWEEN ? AND ?"]
+    lookup_params.extend([start_ms, end_ms])
+    if order_numbers:
+        relevant.append("order_number IN (" + ",".join("?" for _ in order_numbers) + ")")
+        lookup_params.extend(order_numbers)
+    if package_ids:
+        relevant.append("shipment_package_id IN (" + ",".join("?" for _ in package_ids) + ")")
+        lookup_params.extend(package_ids)
+    all_rows = conn.execute(f"""
+        SELECT id, marketplace, transaction_date, order_number, shipment_package_id,
+               barcode, COALESCE(debt,0)-COALESCE(credit,0) AS amount
+        FROM settlements
+        WHERE {return_clause} AND transaction_date <= ? AND ({' OR '.join(relevant)})
+        ORDER BY transaction_date,
+                 CASE WHEN COALESCE(debt,0)-COALESCE(credit,0) >= 0 THEN 0 ELSE 1 END, id
+    """, lookup_params).fetchall()
+    conditions = {
+        (r["marketplace"], r["settlement_id"]): r["condition"]
+        for r in conn.execute("SELECT marketplace,settlement_id,condition FROM return_conditions")
+    }
+    by_sale_key = {}
+    for ln in line_rows:
+        by_sale_key.setdefault((ln["marketplace"], ln["shipment_package_id"], ln["barcode"]), ln)
+    used_amount = defaultdict(float)
+    allocations = defaultdict(lambda: {"return_amount": 0.0, "return_amount_for_cogs": 0.0,
+                                      "return_count": 0, "return_date": None})
+    uncertain = []
+    matched = []
+
+    for r in all_rows:
+        exact = conn.execute("""
+            SELECT ol.shipment_package_id,ol.marketplace,ol.barcode,ol.merchant_sku,
+                   ol.product_name,ol.quantity,ol.line_unit_price,ol.commission_rate,
+                   ol.seller_discount,ol.marketplace_discount,o.order_date,o.order_number,o.status
+            FROM order_lines ol JOIN orders o
+              ON o.shipment_package_id=ol.shipment_package_id AND o.marketplace=ol.marketplace
+            WHERE ol.marketplace=? AND ol.shipment_package_id=? AND ol.barcode=?
+        """, (r["marketplace"], r["shipment_package_id"], r["barcode"])).fetchall()
+        candidates = exact
+        match_method = "package+barcode"
+        if not candidates and r["order_number"] and r["barcode"]:
+            candidates = conn.execute("""
+                SELECT ol.shipment_package_id,ol.marketplace,ol.barcode,ol.merchant_sku,
+                       ol.product_name,ol.quantity,ol.line_unit_price,ol.commission_rate,
+                       ol.seller_discount,ol.marketplace_discount,o.order_date,o.order_number,o.status
+                FROM order_lines ol JOIN orders o
+                  ON o.shipment_package_id=ol.shipment_package_id AND o.marketplace=ol.marketplace
+                WHERE ol.marketplace=? AND o.order_number=?
+                  AND (ol.merchant_sku=? OR ol.barcode=?)
+            """, (r["marketplace"], r["order_number"], r["barcode"], r["barcode"])).fetchall()
+            match_method = "order_number+SKU"
+        # Duplicate SQL paths can only be collapsed when they identify the
+        # same physical order-line key. Distinct candidates remain uncertain.
+        unique = {}
+        for ln in candidates:
+            key = (ln["marketplace"], ln["shipment_package_id"], ln["barcode"])
+            unique[key] = ln
+        reason = None
+        if len(unique) != 1:
+            reason = "eşleşen satış bulunamadı" if not unique else "birden fazla satış adayı"
+        else:
+            sale_key, ln = next(iter(unique.items()))
+            sale = settlement_totals_all.get(sale_key) or {}
+            source_amount = sale.get("gross_revenue") or ((ln["line_unit_price"] or 0) + (ln["seller_discount"] or 0) + (ln["marketplace_discount"] or 0)) * (ln["quantity"] or 0)
+            amount = float(r["amount"] or 0)
+            if match_method == "order_number+SKU" and amount > 0 and (
+                source_amount <= 0 or used_amount[sale_key] + amount > source_amount + 0.02
+            ):
+                reason = "sipariş/SKU eşleşmesi var ancak iade tutarı kalan satış tutarını aşıyor"
+            else:
+                used_amount[sale_key] = max(0.0, used_amount[sale_key] + amount)
+                in_period = start_ms <= (r["transaction_date"] or 0) <= end_ms
+                if in_period:
+                    condition = conditions.get((r["marketplace"], r["id"]), "sellable")
+                    target = allocations[sale_key]
+                    target["return_amount"] += amount
+                    if condition == "sellable":
+                        target["return_amount_for_cogs"] += amount
+                    target["return_count"] += 1
+                    rd = r["transaction_date"]
+                    if rd:
+                        target["return_date"] = rd if target["return_date"] is None else min(target["return_date"], rd)
+                    matched.append({"id": r["id"], "marketplace": r["marketplace"],
+                                    "order_number": r["order_number"], "sku": ln["merchant_sku"] or ln["barcode"],
+                                    "shipment_package_id": r["shipment_package_id"],
+                                    "sale_shipment_package_id": ln["shipment_package_id"],
+                                    "transaction_date": r["transaction_date"], "amount": amount,
+                                    "condition": condition, "method": match_method,
+                                    "sale_order_date": ln["order_date"]})
+                continue
+        if start_ms <= (r["transaction_date"] or 0) <= end_ms:
+            uncertain.append({"id": r["id"], "marketplace": r["marketplace"],
+                              "order_number": r["order_number"], "barcode": r["barcode"],
+                              "transaction_date": r["transaction_date"], "amount": r["amount"],
+                              "reason": reason})
+
+    # A return may refer to a sale outside this reporting month. Add that
+    # historical order line as return-only so revenue is never re-counted.
+    return_only = []
+    period_keys = {(ln["marketplace"], ln["shipment_package_id"], ln["barcode"]) for ln in line_rows}
+    for key in allocations:
+        if key in period_keys:
+            continue
+        historical = conn.execute("""
+            SELECT ol.shipment_package_id,ol.marketplace,ol.barcode,ol.merchant_sku,
+                   ol.product_name,ol.quantity,ol.line_unit_price,ol.commission_rate,
+                   ol.seller_discount,ol.marketplace_discount,o.order_date,o.order_number,o.status
+            FROM order_lines ol JOIN orders o
+              ON o.shipment_package_id=ol.shipment_package_id AND o.marketplace=ol.marketplace
+            WHERE ol.marketplace=? AND ol.shipment_package_id=? AND ol.barcode=?
+            LIMIT 1
+        """, key).fetchone()
+        if historical:
+            item = dict(historical); item["_returnOnly"] = True
+            return_only.append(item)
+    return allocations, return_only, matched, uncertain
+
+
 def _load_other_financial_totals(conn, start_ms, end_ms, order_scope=None):
     """marketplace -> {transaction_type: net_tutar (debt-credit)}.
     ESKİ MOTORDAN FARK: artık sadece 'debt' değil, debt-credit netlemesi
@@ -685,41 +820,58 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
             "SELECT marketplace,transaction_date,COALESCE(debt,0)-COALESCE(credit,0) AS amount FROM other_financials WHERE transaction_type='DeductionInvoices' AND lower(COALESCE(raw_transaction_type,'')) LIKE '%reklam%' AND transaction_date BETWEEN ? AND ?",
             (start_ms, end_ms)).fetchall()]
 
-        # İade tarihi satış ayından sonraysa, mevcut dönem order_date filtresi
-        # orijinal ürün satırını dışarıda bırakır. İade tutarını ve COGS
-        # reversal'ını doğru SKU'ya bağlamak için sadece iade satırı olan
-        # eski sipariş kalemlerini getir; bunlar sentetik satış geliri yaratmaz.
-        return_only_lines = []
-        for (mp, spid, barcode), settlement in settlement_totals_in_range.items():
-            key = (mp, spid, barcode)
-            if not settlement.get("return_amount") or key in {
-                (ln["marketplace"], ln["shipment_package_id"], ln["barcode"]) for ln in lines
-            }:
-                continue
-            if marketplace_filter and mp != marketplace_filter:
-                continue
-            historical = conn.execute("""
-                SELECT ol.shipment_package_id, ol.marketplace, ol.barcode, ol.merchant_sku,
-                       ol.product_name, ol.quantity, ol.line_unit_price, ol.commission_rate,
-                       ol.seller_discount, ol.marketplace_discount,
-                       o.order_date, o.order_number, o.status
-                FROM order_lines ol JOIN orders o
-                  ON o.shipment_package_id=ol.shipment_package_id AND o.marketplace=ol.marketplace
-                WHERE ol.marketplace=? AND ol.shipment_package_id=? AND ol.barcode=?
-                ORDER BY o.order_date DESC LIMIT 1
-            """, (mp, spid, barcode)).fetchone()
-            if historical:
-                item = dict(historical)
-                item["_returnOnly"] = True
-                return_only_lines.append(item)
+        return_allocations, return_only_lines, return_matches, uncertain_returns = (
+            _resolve_return_allocations(conn, start_ms, end_ms, lines, settlement_totals_all)
+        )
+        # Replace package-keyed return totals with confirmed allocations on
+        # their original sale lines. Uncertain events remain in the period's
+        # return total and therefore reduce revenue, but do not reverse COGS.
+        for entry in settlement_totals_in_range.values():
+            entry.update(return_amount=0.0, return_amount_for_cogs=0.0,
+                         return_count=0, return_date=None)
+        for sale_key, allocation in return_allocations.items():
+            target = settlement_totals_in_range.setdefault(sale_key, {
+                "gross_revenue": 0.0, "commission": 0.0, "service_fee": 0.0,
+                "return_amount": 0.0, "return_amount_for_cogs": 0.0,
+                "return_count": 0, "order_number": None, "min_date": None,
+                "return_date": None,
+            })
+            target.update(allocation)
+        if marketplace_filter:
+            return_only_lines = [ln for ln in return_only_lines if ln["marketplace"] == marketplace_filter]
+            return_matches = [r for r in return_matches if r["marketplace"] == marketplace_filter]
+            uncertain_returns = [r for r in uncertain_returns if r["marketplace"] == marketplace_filter]
 
     known_keys = {(ln["marketplace"], ln["shipment_package_id"], ln["barcode"]) for ln in lines}
     if include_settlement_only:
         settlement_only_lines = _build_settlement_only_lines(settlement_totals_in_range, known_keys, barcode_sku_map)
         if marketplace_filter:
             settlement_only_lines = [ln for ln in settlement_only_lines if ln["marketplace"] == marketplace_filter]
+        settlement_only_by_key = {
+            (ln["marketplace"], ln["shipment_package_id"], ln["barcode"]): ln
+            for ln in settlement_only_lines
+        }
+        return_only_by_key = {
+            (ln["marketplace"], ln["shipment_package_id"], ln["barcode"]): ln
+            for ln in return_only_lines
+        }
+        # A late settlement can already have produced a settlement-only line
+        # for a historical sale. Enrich it with the original order line and
+        # let that single line carry the return; otherwise a second return-only
+        # row would double-count the refund and COGS reversal.
+        for key, historic in return_only_by_key.items():
+            if key in settlement_only_by_key:
+                settlement_only_by_key[key].update({
+                    k: historic[k] for k in (
+                        "merchant_sku", "product_name", "quantity", "line_unit_price",
+                        "commission_rate", "seller_discount", "marketplace_discount",
+                        "order_date", "order_number", "status",
+                    ) if k in historic
+                })
+                settlement_only_by_key[key]["_returnOnly"] = False
+                historic["_omitReturnOnly"] = True
         lines.extend(settlement_only_lines)
-        lines.extend(return_only_lines)
+        lines.extend(ln for ln in return_only_lines if not ln.get("_omitReturnOnly"))
 
     lines_per_order = defaultdict(int)
     for ln in lines:
@@ -767,6 +919,8 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
         "expense_aliases": expense_aliases,
         "fixed_expenses": fixed_expenses,
         "auto_ads": auto_ads,
+        "return_matches": return_matches,
+        "uncertain_returns": uncertain_returns,
     }
 
 
@@ -938,10 +1092,12 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
     # kalem olarak eklenir, return_amount'un overhead'de zaten düşülüyor
     # olmasıyla ÇAKIŞMAZ (iki farklı, birbirinden bağımsız düzeltme).
     return_amount = 0.0
+    return_amount_for_cogs = 0.0
     return_date = None
     if settlement_totals_in_range is not None:
         _rng = settlement_totals_in_range.get(key) or {}
         return_amount = _rng.get("return_amount", 0.0) or 0.0
+        return_amount_for_cogs = _rng.get("return_amount_for_cogs", return_amount) or 0.0
         return_date = _rng.get("return_date")
 
     net_revenue = None
@@ -951,7 +1107,9 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
     cogs_reversal = None
     cogs_reversal_estimated = False
     cogs_reversal_note = None
-    if return_amount and return_amount > 0:
+    if return_amount and return_amount > 0 and return_amount_for_cogs <= 0:
+        cogs_reversal_note = "damaged_or_lost"
+    elif return_amount and return_amount > 0 and return_amount_for_cogs > 0:
         if cogs is None:
             # Maliyet bilinmiyor -> COGS reversal UYDURULMAZ (bkz. talimat).
             cogs_reversal_note = "missing_cost"
@@ -959,7 +1117,7 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
             # Orijinal ciro yok/sıfır -> oran hesaplanamaz, tahmin üretilmez.
             cogs_reversal_note = "zero_original_revenue"
         else:
-            ratio = return_amount / gross_revenue
+            ratio = return_amount_for_cogs / gross_revenue
             if ratio > 1.0:
                 # İade tutarı orijinal ciroyu aşıyor (örn. kupon/indirim
                 # etkileşimi, çoklu iade olayı) -> COGS'tan fazlasını asla
@@ -984,6 +1142,7 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
         "returnAmount": round(return_amount_excl_vat, 2),
         "returnAmountInclVat": round(return_amount, 2),
         "returnAmountExclVat": round(return_amount_excl_vat, 2),
+        "returnAmountForCogsInclVat": round(return_amount_for_cogs, 2),
         # İadenin GERÇEK transaction_date'i — orderDate ile KARIŞTIRILMAMALI.
         # Grafiklerde (daily/monthly) iadenin doğru periyoda düşmesi için kullanılır.
         "returnDate": return_date,
@@ -1121,7 +1280,7 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
         return_ex = sum(r.get("returnAmountExclVat") or 0 for ln0, r in zip(lines, line_results) if r["marketplace"] == mp)
         cfg = vat_settings or {}
         return_total_ex = _amount_ex_vat(mp_overhead.get("return_amount", 0), cfg.get("sale"))
-        unmatched_return_ex = max((return_total_ex or 0) - return_ex, 0)
+        unmatched_return_ex = (return_total_ex or 0) - return_ex
         platform_ex = _amount_ex_vat(mp_overhead.get("platform_fee", 0), cfg.get("service"))
         ads_ex = _amount_ex_vat(mp_overhead.get("advertising", 0), cfg.get("advertising"))
         advance_ex = _amount_ex_vat(mp_overhead.get("cash_advance", 0), cfg.get("service"))
@@ -1372,11 +1531,14 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
         data["expense_aliases"], vat_cfg.get("manual_expense", {"vat_included": 1, "vat_rate": .20}),
         data["auto_ads"] if include_period_expenses else [],
     )
-    sales_excl_basis = max(total_gross_revenue, 0)
-    avg_sale_rate = (total_vat_on_sale / sales_excl_basis) if sales_excl_basis else float(vat_cfg.get("sale", {}).get("vat_rate", .20))
-    returned_excl = _amount_ex_vat(return_total, {"vat_included": vat_cfg.get("sale", {}).get("vat_included", 1), "vat_rate": avg_sale_rate}) if return_total else 0.0
+    return_vat_setting = vat_cfg.get("sale", {"vat_included": 1, "vat_rate": .20})
+    returned_excl = _amount_ex_vat(return_total, return_vat_setting) if return_total else 0.0
+    vat_on_returns = max(return_total - returned_excl, 0.0)
+    # Estimated VAT on returns reduces the month's output VAT. Return invoices
+    # may use a different rate; this uses the configured sales-rate average.
+    total_vat_on_sale -= vat_on_returns
     matched_return_excl = sum(r.get("returnAmountExclVat") or 0 for r in line_results)
-    unmatched_return_excl = max(returned_excl - matched_return_excl, 0)
+    unmatched_return_excl = returned_excl - matched_return_excl
     unallocated_expenses = (marketplace_service_ex + automatic_advertising_ex + cash_advance_ex
                             + expense_summary["business"] + unmatched_return_excl)
     overhead_total = marketplace_service_ex + automatic_advertising_ex + cash_advance_ex + unmatched_return_excl
@@ -1393,6 +1555,7 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
     net_profit_after_vat = net_profit - vat_payable
     net_profit_after_taxes = net_profit - expense_summary["tax"]
     vat_assumed = bool(expense_summary["assumed"] or any(r.get("vatAssumed") for r in line_results)
+                       or (bool(return_total) and _vat_assumed(return_vat_setting))
                        or ((automatic_advertising_ex or marketplace_service_ex or cash_advance_ex)
                            and any(_vat_assumed(vat_cfg.get(k)) for k in ("advertising", "service"))))
 
@@ -1434,10 +1597,13 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             "expenseDuplicates": expense_summary["duplicates"],
             "expenseTypeTotals": expense_summary["by_type"],
             "vatOnSales": round(total_vat_on_sale, 2),
+            "vatOnReturns": round(vat_on_returns, 2),
             "vatOnPurchases": round(total_vat_on_cost, 2),
             "vatPayableEstimate": round(vat_payable, 2),
             "netProfitAfterVatEstimate": round(net_profit_after_vat, 2),
             "paymentOrderNet": round(payment_order_net, 2),
+            "matchedReturns": data["return_matches"],
+            "unmatchedReturns": data["uncertain_returns"],
         },
         "data_quality": {
             "lines_with_real_settlement": real_count,
