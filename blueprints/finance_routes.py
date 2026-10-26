@@ -10,7 +10,8 @@ cost_routes.py / stock_routes.py / payout_routes.py ile aynı desen.
 app.py'de kayıt: app.register_blueprint(finance_routes.bp)
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+import math
 
 from flask import Blueprint, jsonify, request
 
@@ -44,6 +45,104 @@ from sync_core import (
 )
 
 bp = Blueprint("finance_routes", __name__)
+
+
+def _invoice_month(month):
+    try:
+        parsed = datetime.strptime(month, "%Y-%m")
+        if parsed.strftime("%Y-%m") != month:
+            raise ValueError
+        start = datetime(parsed.year, parsed.month, 1)
+        next_month = datetime(parsed.year + (parsed.month == 12), 1 if parsed.month == 12 else parsed.month + 1, 1)
+        return start, next_month
+    except (TypeError, ValueError):
+        return None, None
+
+
+@bp.route("/api/invoice-planning", methods=["GET"])
+def api_invoice_planning():
+    month = (request.args.get("month") or "").strip()
+    start, end = _invoice_month(month)
+    if start is None:
+        return jsonify({"error": "month YYYY-MM biçiminde olmalı."}), 400
+    with get_connection() as conn:
+        invoices = [dict(row) for row in conn.execute(
+            "SELECT id,invoice_date,description,amount_ex_vat,vat_amount FROM business_invoices "
+            "WHERE invoice_date >= ? AND invoice_date < ? ORDER BY invoice_date,id",
+            (start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")),
+        ).fetchall()]
+        target_row = conn.execute("SELECT target_profit FROM invoice_profit_targets WHERE month=?", (month,)).fetchone()
+    today = date.today()
+    is_complete = (start.year, start.month) < (today.year, today.month)
+    period_end = end - timedelta(milliseconds=1) if is_complete else max(
+        start, min(datetime.now(), end - timedelta(milliseconds=1))
+    )
+    summary = compute_profit_summary(start_dt=start, end_dt=period_end, include_period_expenses=True)
+    totals = summary["totals"]
+    target = float(target_row["target_profit"]) if target_row else 0.0
+    invoice_total = sum(float(row["amount_ex_vat"]) for row in invoices)
+    operating_profit = float(totals.get("operatingProfit") or 0)
+    remaining = max(0.0, operating_profit - invoice_total - target)
+    return jsonify({
+        "month": month,
+        "invoices": invoices,
+        "invoice_total_ex_vat": round(invoice_total, 2),
+        "target_profit": round(target, 2),
+        "operating_profit": round(operating_profit, 2),
+        "remaining_invoice_need": round(remaining, 2),
+        "month_complete": is_complete,
+        "warning": None if is_complete else "Ay sonu kesinleşmedi; tutar dönem sonu hesabı değildir.",
+        "profit_status": "Tahmini (KDV varsayımlı)" if totals.get("vatAssumed") else "Tahmini",
+    })
+
+
+@bp.route("/api/invoices", methods=["POST"])
+def api_create_invoice():
+    data = request.get_json(silent=True) or {}
+    try:
+        invoice_date = datetime.strptime(str(data.get("date", "")), "%Y-%m-%d").date()
+        description = str(data.get("description") or "").strip()
+        amount = float(data.get("amount_ex_vat"))
+        vat_amount = float(data.get("vat_amount") or 0)
+        if not description or not math.isfinite(amount) or not math.isfinite(vat_amount) or amount < 0 or vat_amount < 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"error": "Tarih, açıklama ve sıfırdan küçük olmayan sayısal tutarlar gerekli."}), 400
+    with get_connection() as conn:
+        cur = conn.execute(
+            "INSERT INTO business_invoices(invoice_date,description,amount_ex_vat,vat_amount) VALUES(?,?,?,?)",
+            (invoice_date.isoformat(), description, amount, vat_amount),
+        )
+        row = conn.execute("SELECT id,invoice_date,description,amount_ex_vat,vat_amount FROM business_invoices WHERE id=?", (cur.lastrowid,)).fetchone()
+    return jsonify({"ok": True, "item": dict(row)}), 201
+
+
+@bp.route("/api/invoices/<int:invoice_id>", methods=["DELETE"])
+def api_delete_invoice(invoice_id):
+    with get_connection() as conn:
+        cur = conn.execute("DELETE FROM business_invoices WHERE id=?", (invoice_id,))
+    if not cur.rowcount:
+        return jsonify({"error": "Fatura kaydı bulunamadı."}), 404
+    return jsonify({"ok": True, "id": invoice_id})
+
+
+@bp.route("/api/invoice-target", methods=["PUT"])
+def api_invoice_target():
+    data = request.get_json(silent=True) or {}
+    month = str(data.get("month") or "").strip()
+    start, _ = _invoice_month(month)
+    try:
+        target = float(data.get("target_profit"))
+        if start is None or not math.isfinite(target) or target < 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"error": "Geçerli ay ve sıfır veya daha büyük hedef kâr gerekli."}), 400
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO invoice_profit_targets(month,target_profit) VALUES(?,?)
+            ON CONFLICT(month) DO UPDATE SET target_profit=excluded.target_profit,updated_at=datetime('now','localtime')
+        """, (month, target))
+    return jsonify({"ok": True, "month": month, "target_profit": round(target, 2)})
 
 
 @bp.route("/api/returns", methods=["GET", "POST"])

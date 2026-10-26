@@ -250,6 +250,28 @@ def _migrate_return_conditions(conn):
     """)
 
 
+def _migrate_invoice_planning(conn):
+    """Keep invoice planning separate from expenses and inventory costs."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS business_invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_date TEXT NOT NULL,
+            description TEXT NOT NULL,
+            amount_ex_vat REAL NOT NULL CHECK (amount_ex_vat >= 0),
+            vat_amount REAL NOT NULL DEFAULT 0 CHECK (vat_amount >= 0),
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_business_invoices_date ON business_invoices(invoice_date)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS invoice_profit_targets (
+            month TEXT PRIMARY KEY,
+            target_profit REAL NOT NULL DEFAULT 0 CHECK (target_profit >= 0),
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
+        )
+    """)
+
+
 def _migrate_supplier_debt_v2(conn):
     """Toptancı borcu düzeltmeleri (11.08.2026):
     1) tedarikci_borc_hareketleri.tip CHECK kısıtına 'duzeltme' eklenir —
@@ -473,6 +495,7 @@ _MIGRATIONS = [
     ("2026_07_28_composite_marketplace_keys", _migrate_composite_keys),
     ("2026_08_09_growth_columns", _migrate_growth_columns),
     ("2026_10_26_return_conditions", _migrate_return_conditions),
+    ("2026_10_26_invoice_planning", _migrate_invoice_planning),
     ("2026_08_11_supplier_debt_v2", _migrate_supplier_debt_v2),
     ("2026_08_24_review_first_synced_at", _migrate_review_first_synced_at),
     ("2026_09_03_hb_discount_breakdown", _migrate_hb_discount_breakdown),
