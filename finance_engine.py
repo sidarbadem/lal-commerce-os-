@@ -410,6 +410,25 @@ def _load_other_financial_totals(conn, start_ms, end_ms, order_scope=None):
             continue
         entry = totals[r["marketplace"]].setdefault("_kargo_within_deduction_invoices", {"net": 0.0})
         entry["net"] += r["net_total"] or 0.0
+
+    # Komisyon faturalari: Trendyol komisyonu haftalik fatura olarak da kesiyor;
+    # ayni komisyon satir bazinda (settlements.commission_amount) zaten dusuldugu
+    # icin, faturayi genel gidere (platform bedeli) yazmak komisyonu IKI KEZ dusuyordu.
+    # Kargo ile ayni mantik: DeductionInvoices toplamindan ayri izlenir.
+    komisyon_rows = conn.execute("""
+        SELECT marketplace, shipment_package_id,
+               COALESCE(SUM(debt), 0) - COALESCE(SUM(credit), 0) AS net_total
+        FROM other_financials
+        WHERE transaction_type = 'DeductionInvoices' AND marketplace = 'trendyol'
+          AND raw_transaction_type LIKE 'Komisyon%'
+          AND transaction_date BETWEEN ? AND ?
+        GROUP BY marketplace, shipment_package_id
+    """, (start_ms, end_ms)).fetchall()
+    for r in komisyon_rows:
+        if order_scope is not None and (r["marketplace"], r["shipment_package_id"]) not in order_scope:
+            continue
+        entry = totals[r["marketplace"]].setdefault("_komisyon_within_deduction_invoices", {"net": 0.0})
+        entry["net"] += r["net_total"] or 0.0
     return totals
 
 
@@ -874,7 +893,8 @@ def _compute_overhead_by_marketplace(other_totals, return_totals, marketplaces_p
         stoppage = ot.get("Stoppage", {}).get("net", 0)
         platform_fee_raw = ot.get("DeductionInvoices", {}).get("net", 0)
         kargo_within = ot.get("_kargo_within_deduction_invoices", {}).get("net", 0)
-        platform_fee = platform_fee_raw - kargo_within
+        komisyon_within = ot.get("_komisyon_within_deduction_invoices", {}).get("net", 0)
+        platform_fee = platform_fee_raw - kargo_within - komisyon_within
         cash_advance = ot.get("CashAdvance", {}).get("net", 0)
         return_amount = return_totals.get(mp, {}).get("total", 0)
         overhead_by_mp[mp] = {
