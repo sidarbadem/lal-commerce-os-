@@ -685,12 +685,41 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
             "SELECT marketplace,transaction_date,COALESCE(debt,0)-COALESCE(credit,0) AS amount FROM other_financials WHERE transaction_type='DeductionInvoices' AND lower(COALESCE(raw_transaction_type,'')) LIKE '%reklam%' AND transaction_date BETWEEN ? AND ?",
             (start_ms, end_ms)).fetchall()]
 
+        # İade tarihi satış ayından sonraysa, mevcut dönem order_date filtresi
+        # orijinal ürün satırını dışarıda bırakır. İade tutarını ve COGS
+        # reversal'ını doğru SKU'ya bağlamak için sadece iade satırı olan
+        # eski sipariş kalemlerini getir; bunlar sentetik satış geliri yaratmaz.
+        return_only_lines = []
+        for (mp, spid, barcode), settlement in settlement_totals_in_range.items():
+            key = (mp, spid, barcode)
+            if not settlement.get("return_amount") or key in {
+                (ln["marketplace"], ln["shipment_package_id"], ln["barcode"]) for ln in lines
+            }:
+                continue
+            if marketplace_filter and mp != marketplace_filter:
+                continue
+            historical = conn.execute("""
+                SELECT ol.shipment_package_id, ol.marketplace, ol.barcode, ol.merchant_sku,
+                       ol.product_name, ol.quantity, ol.line_unit_price, ol.commission_rate,
+                       ol.seller_discount, ol.marketplace_discount,
+                       o.order_date, o.order_number, o.status
+                FROM order_lines ol JOIN orders o
+                  ON o.shipment_package_id=ol.shipment_package_id AND o.marketplace=ol.marketplace
+                WHERE ol.marketplace=? AND ol.shipment_package_id=? AND ol.barcode=?
+                ORDER BY o.order_date DESC LIMIT 1
+            """, (mp, spid, barcode)).fetchone()
+            if historical:
+                item = dict(historical)
+                item["_returnOnly"] = True
+                return_only_lines.append(item)
+
     known_keys = {(ln["marketplace"], ln["shipment_package_id"], ln["barcode"]) for ln in lines}
     if include_settlement_only:
         settlement_only_lines = _build_settlement_only_lines(settlement_totals_in_range, known_keys, barcode_sku_map)
         if marketplace_filter:
             settlement_only_lines = [ln for ln in settlement_only_lines if ln["marketplace"] == marketplace_filter]
         lines.extend(settlement_only_lines)
+        lines.extend(return_only_lines)
 
     lines_per_order = defaultdict(int)
     for ln in lines:
@@ -993,6 +1022,32 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
         "fromSettlementOnly": isinstance(ln, dict) and ln.get("_fromSettlementOnly", False),
         "quantityEstimated": isinstance(ln, dict) and ln.get("_quantityEstimated", False),
     }
+    if isinstance(ln, dict) and ln.get("_returnOnly"):
+        # Eski satışın geliri/maliyeti satış ayında kalır. İade ayında yalnızca
+        # iadeyi ve KDV hariç geri kazanılan ürün maliyetini ürün kârına yaz.
+        return_effect = -(return_amount_excl_vat or 0) + (cogs_reversal_excl_vat or 0)
+        line_result.update({
+            "grossRevenue": 0.0, "grossRevenueInclVat": 0.0,
+            "netRevenue": round(-(return_amount_excl_vat or 0), 2),
+            "revenueExclVat": 0.0,
+            "commission": 0.0, "commissionInclVat": 0.0, "commissionExclVat": 0.0,
+            "serviceFee": 0.0, "serviceFeeInclVat": 0.0, "serviceFeeExclVat": 0.0,
+            "netHakedis": 0.0,
+            "cogs": 0.0, "cogsInclVat": 0.0, "cogsExclVat": 0.0,
+            "cargo": 0.0, "cargoInclVat": 0.0, "cargoExclVat": 0.0,
+            "vatOnSale": 0.0, "vatOnCost": 0.0,
+            "profit": round(return_effect, 2), "profitExclVat": round(return_effect, 2),
+            "trueGrossProfit": round(return_effect, 2),
+            "cargoMissing": False, "cargoEstimated": False, "cargoStatus": "return",
+        })
+    elif return_amount_excl_vat:
+        # Aynı ay içindeki iadeyi de ürün kârından yalnızca bir kez düş.
+        return_effect = -(return_amount_excl_vat or 0) + (cogs_reversal_excl_vat or 0)
+        if line_result["profit"] is not None:
+            line_result["profit"] = round(line_result["profit"] + return_effect, 2)
+            line_result["profitExclVat"] = line_result["profit"]
+        if line_result["trueGrossProfit"] is not None:
+            line_result["trueGrossProfit"] = round(line_result["trueGrossProfit"] + return_effect, 2)
     return line_result, estimated, missing_cost_sku, cargo_missing_order
 
 
@@ -1064,16 +1119,18 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
         # gelir tarafını, diğeri maliyet tarafını düzeltiyor) — çift sayım
         # YOK, bkz. finance_engine.py modül docstring'i madde 6.
         return_ex = sum(r.get("returnAmountExclVat") or 0 for ln0, r in zip(lines, line_results) if r["marketplace"] == mp)
-        reversal_ex = sum(r.get("cogsReversalExclVat") or 0 for ln0, r in zip(lines, line_results) if r["marketplace"] == mp)
         cfg = vat_settings or {}
+        return_total_ex = _amount_ex_vat(mp_overhead.get("return_amount", 0), cfg.get("sale"))
+        unmatched_return_ex = max((return_total_ex or 0) - return_ex, 0)
         platform_ex = _amount_ex_vat(mp_overhead.get("platform_fee", 0), cfg.get("service"))
         ads_ex = _amount_ex_vat(mp_overhead.get("advertising", 0), cfg.get("advertising"))
         advance_ex = _amount_ex_vat(mp_overhead.get("cash_advance", 0), cfg.get("service"))
-        net_profit = s["gross_profit"] - (return_ex or _amount_ex_vat(mp_overhead.get("return_amount", 0), cfg.get("sale"))) + reversal_ex - platform_ex - ads_ex - advance_ex
+        net_profit = s["gross_profit"] - platform_ex - ads_ex - advance_ex - unmatched_return_ex
         by_marketplace[mp] = {
             "grossRevenue": round(s["gross_revenue"], 2),
-            "returnAmount": round(mp_overhead.get("return_amount", 0), 2),
-            "netRevenue": round(s["gross_revenue"] - mp_overhead.get("return_amount", 0), 2),
+            "returnAmount": round(return_total_ex or 0, 2),
+            "returnAmountInclVat": round(mp_overhead.get("return_amount", 0), 2),
+            "netRevenue": round(s["gross_revenue"] - (return_total_ex or 0), 2),
             "netHakedis": round(s["net_hakedis"], 2),
             "grossProfit": round(s["gross_profit"], 2),
             "trueGrossProfit": round(s["true_gross_profit"], 2),
@@ -1084,7 +1141,7 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
             "advertising": round(mp_overhead.get("advertising", 0), 2),
             "withholdingForOffset": round(mp_overhead.get("stoppage", 0), 2),
             "cashAdvanceCost": round(mp_overhead.get("cash_advance", 0), 2),
-            "overheadTotal": round(platform_ex + ads_ex + advance_ex + (_amount_ex_vat(mp_overhead.get("return_amount", 0), cfg.get("sale"))) - reversal_ex, 2),
+            "overheadTotal": round(platform_ex + ads_ex + advance_ex, 2),
             "netProfit": round(net_profit, 2),
             "overheadApplied": mp_overhead["has_data"],
             "returnCount": return_totals.get(mp, {}).get("count", 0),
@@ -1318,12 +1375,11 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
     sales_excl_basis = max(total_gross_revenue, 0)
     avg_sale_rate = (total_vat_on_sale / sales_excl_basis) if sales_excl_basis else float(vat_cfg.get("sale", {}).get("vat_rate", .20))
     returned_excl = _amount_ex_vat(return_total, {"vat_included": vat_cfg.get("sale", {}).get("vat_included", 1), "vat_rate": avg_sale_rate}) if return_total else 0.0
-    reversal_excl = sum(r.get("cogsReversalExclVat") or 0 for r in line_results)
-    # Returns/reversals with no matching line still reconcile at the marketplace
-    # summary level; their VAT conversion is explicitly estimated.
+    matched_return_excl = sum(r.get("returnAmountExclVat") or 0 for r in line_results)
+    unmatched_return_excl = max(returned_excl - matched_return_excl, 0)
     unallocated_expenses = (marketplace_service_ex + automatic_advertising_ex + cash_advance_ex
-                            + expense_summary["business"] + returned_excl - reversal_excl)
-    overhead_total = marketplace_service_ex + automatic_advertising_ex + cash_advance_ex + returned_excl - reversal_excl
+                            + expense_summary["business"] + unmatched_return_excl)
+    overhead_total = marketplace_service_ex + automatic_advertising_ex + cash_advance_ex + unmatched_return_excl
     net_profit = gross_profit - unallocated_expenses
     total_vat_on_cost += commission_vat + service_vat + cargo_vat
     # Ads and service charges embedded in DeductionInvoices are converted with
@@ -1346,7 +1402,8 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
     return {
         "totals": {
             "grossRevenue": round(total_gross_revenue, 2),
-            "returnAmount": round(return_total, 2),
+            "returnAmount": round(returned_excl, 2),
+            "returnAmountInclVat": round(return_total, 2),
             "netRevenue": round(total_gross_revenue - returned_excl, 2),
             "netHakedis": round(total_net_hakedis, 2),
             "commission": round(total_commission, 2),
@@ -1424,7 +1481,7 @@ def monthly_profit(start_dt, end_dt, marketplace_filter=None):
             status = "Kesin"
         months.append({
             "month": key,
-            "revenue": t.get("grossRevenue", 0),
+            "revenue": t.get("netRevenue", t.get("grossRevenue", 0)),
             "grossProfit": t.get("grossProfit", 0),
             "trueGrossProfit": t.get("trueGrossProfit", 0),
             "netProfit": t.get("netProfit", 0),

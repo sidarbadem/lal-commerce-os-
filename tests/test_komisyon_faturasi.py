@@ -11,7 +11,9 @@ def test_overhead_excludes_commission_invoices_from_platform_fee():
     }}
     overhead, _ = fe._compute_overhead_by_marketplace(other, {}, ["trendyol"])
     assert overhead["trendyol"]["platform_fee"] == 300.0
-    assert overhead["trendyol"]["total"] == 310.0
+    # Stopaj mahsup olarak ayrıdır; yalnızca 300 TL KDV hariç hizmet kesintisi
+    # faaliyet kârına gider.
+    assert overhead["trendyol"]["total"] == 300.0
 
 
 def test_load_other_totals_separates_commission_invoices(db):

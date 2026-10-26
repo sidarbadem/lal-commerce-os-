@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 
 import finance_engine
 import manual_orders
+import pytest
 from tests.conftest import auth_headers
 
 
@@ -62,7 +63,7 @@ def test_manual_order_counts_in_daily_sales_and_today_counters(client, db):
 
     resp = client.get("/api/today-net-profit", headers=auth_headers())
     body = resp.get_json()
-    assert body["netProfit"] == 520.0
+    assert body["netProfit"] == round(1000 / 1.2 - 400 / 1.2 - 50 / 1.2 - 30 / 1.2, 2)
     assert body["hasMissingCost"] is False
 
 
@@ -74,12 +75,13 @@ def test_manual_order_counts_in_profit_summary_and_monthly(client, db):
 
     summary = finance_engine.compute_profit_summary(start_dt=start, end_dt=end, marketplace_filter=None)
     t = summary["totals"]
-    assert t["grossRevenue"] == 1000.0
-    assert t["trueGrossProfit"] == 600.0
-    assert t["netProfit"] == 520.0
-    assert t["commission"] == 50.0
-    assert t["cargoTotal"] == 30.0
-    assert summary["by_marketplace"]["softhydra"]["netProfit"] == 520.0
+    assert t["grossRevenue"] == pytest.approx(round(1000.0 / 1.2, 2))
+    assert t["trueGrossProfit"] == pytest.approx(round(1000 / 1.2 - 400 / 1.2, 2))
+    expected_profit = 1000 / 1.2 - 400 / 1.2 - 50 / 1.2 - 30 / 1.2
+    assert t["netProfit"] == pytest.approx(round(expected_profit, 2))
+    assert t["commission"] == pytest.approx(round(50.0 / 1.2, 2))
+    assert t["cargoTotal"] == pytest.approx(round(30.0 / 1.2, 2))
+    assert summary["by_marketplace"]["softhydra"]["netProfit"] == pytest.approx(round(expected_profit, 2))
     assert summary["by_marketplace"]["softhydra"]["orderCount"] == 1
     assert summary["data_quality"]["skus_missing_cost"] == []
 
@@ -90,9 +92,9 @@ def test_manual_order_counts_in_profit_summary_and_monthly(client, db):
 
     months = finance_engine.monthly_profit(datetime.now().replace(day=1, hour=0, minute=0), end)
     this_month = next(m for m in months if m["month"] == datetime.now().strftime("%Y-%m"))
-    assert this_month["revenue"] == 1000.0
-    assert this_month["trueGrossProfit"] == 600.0
-    assert this_month["netProfit"] == 520.0
+    assert this_month["revenue"] == pytest.approx(round(1000.0 / 1.2, 2))
+    assert this_month["trueGrossProfit"] == pytest.approx(round(1000 / 1.2 - 400 / 1.2, 2))
+    assert this_month["netProfit"] == pytest.approx(round(expected_profit, 2))
     assert this_month["ordersMissingCargo"] == 0
 
 

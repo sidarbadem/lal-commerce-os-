@@ -82,8 +82,9 @@ def test_order_profit_map_estimated_when_cargo_missing(db):
     assert key in result
     # DB'de hiç bilinen (gerçek) kargo verisi yok -> zincirin sonundaki sabit
     # CARGO_COST_FALLBACK_ESTIMATE (₺200) kullanılır.
-    # profit = net_hakedis(100-10 komisyon) - cogs(40) - kargo(200) = -150.
-    assert result[key]["netProfit"] == pytest.approx((100 - 10) - 40 - 200.0)
+    # Ham tutarlar KDV dahil: satış 100, maliyet 40, komisyon 10 ve tahmini
+    # kargo 200 TL'nin her biri KDV hariç matraha çevrilir.
+    assert result[key]["netProfit"] == pytest.approx(round(100/1.2 - 40/1.1 - 10/1.2 - 200/1.2, 2))
     assert result[key]["cargoEstimated"] is True
 
 
@@ -120,8 +121,7 @@ def test_order_profit_map_computes_when_cargo_present(db):
     result = _build_order_profit_map(now, now)
     key = ("trendyol", "ONCM2")
     assert key in result
-    # profit = net_hakedis(100-10 komisyon) - cogs(40) - kargo(10) = 40
-    assert result[key]["netProfit"] == pytest.approx(40.0)
+    assert result[key]["netProfit"] == pytest.approx(round(100/1.2 - 40/1.1 - 10/1.2 - 10/1.2, 2))
     assert result[key]["cargoEstimated"] is False
 
 

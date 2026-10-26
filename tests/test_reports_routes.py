@@ -119,7 +119,7 @@ def test_reports_overview_daily_chart_reflects_return_in_return_month(client):
     assert daily_by_date["2026-09-04"]["profit"] < 0, "iade günü kâr düşmeli (negatif etki)"
 
     # Temmuz'un satış günü hâlâ tam olarak görünmeli (iadeden etkilenmemeli)
-    assert daily_by_date["2026-07-02"]["revenue"] == pytest.approx(700.0)
+    assert daily_by_date["2026-07-02"]["revenue"] == pytest.approx(round(700.0 / 1.2, 2))
 
 
 def test_reports_export_requires_auth(client):

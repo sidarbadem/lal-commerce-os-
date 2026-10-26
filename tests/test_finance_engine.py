@@ -229,10 +229,13 @@ def test_missing_cargo_invoice_flags_profit_as_none_not_zero(db):
     line = summary["lines"][0]
     assert line["cargoMissing"] is True
     assert line["cargoEstimated"] is True
-    assert line["cargo"] == pytest.approx(fe.CARGO_COST_FALLBACK_ESTIMATE)
-    # profit = (100-10) - 40 - 200 (tahmini kargo) = -150
-    assert line["profit"] == pytest.approx(90 - 40 - fe.CARGO_COST_FALLBACK_ESTIMATE)
-    assert summary["totals"]["grossProfit"] == pytest.approx(90 - 40 - fe.CARGO_COST_FALLBACK_ESTIMATE)
+    # Ham tutarlar KDV dahil: ₺200 / 1,20 = ₺166,67 kargo; satış ₺100/1,20,
+    # maliyet ₺40/1,10, komisyon ₺10/1,20 tabanında hesaplanır.
+    expected_cargo = fe.CARGO_COST_FALLBACK_ESTIMATE / 1.2
+    expected_profit = 100 / 1.2 - 40 / 1.1 - 10 / 1.2 - expected_cargo
+    assert line["cargo"] == pytest.approx(round(expected_cargo, 2))
+    assert line["profit"] == pytest.approx(round(expected_profit, 2))
+    assert summary["totals"]["grossProfit"] == pytest.approx(round(expected_profit, 2))
 
 
 def test_cargo_present_computes_profit_normally(db):
@@ -254,9 +257,8 @@ def test_cargo_present_computes_profit_normally(db):
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
     line = summary["lines"][0]
     assert line["cargoMissing"] is False
-    assert line["cargo"] == pytest.approx(20.0)
-    # profit = net_hakedis(100-10) - cogs(40) - cargo(20) = 30
-    assert line["profit"] == pytest.approx(30.0)
+    assert line["cargo"] == pytest.approx(round(20 / 1.2, 2))
+    assert line["profit"] == pytest.approx(round(100 / 1.2 - 40 / 1.1 - 10 / 1.2 - 20 / 1.2, 2))
 
 
 def test_missing_cargo_does_not_crash_totals_aggregation(db):
@@ -287,10 +289,9 @@ def test_missing_cargo_does_not_crash_totals_aggregation(db):
     # TEK bilinen gerçek kargo verisi (ONMIX2, SKU-MIX2, ₺15) global ortalamayı
     # oluşturuyor -> SKU-MIX1 bu global ortalamaya (₺15) düşüyor, sabit ₺200'e
     # değil (bkz. CARGO_AVG_LOOKBACK_DAYS / _load_sku_cargo_averages).
-    # 322: profit = (100-10)-40-15 = 35. 323: profit = (100-10)-40-15 = 35.
-    # Toplam = 35 + 35 = 70.
-    assert summary["totals"]["grossProfit"] == pytest.approx(35.0 + 35.0)
-    assert summary["totals"]["cargoTotal"] == pytest.approx(15.0 + 15.0)
+    expected_each = 100 / 1.2 - 40 / 1.1 - 10 / 1.2 - 15 / 1.2
+    assert summary["totals"]["grossProfit"] == pytest.approx(round(expected_each, 2) * 2)
+    assert summary["totals"]["cargoTotal"] == pytest.approx(round(15 / 1.2, 2) * 2)
     assert summary["data_quality"]["orders_missing_cargo_invoice"] == 1
 
 
@@ -316,10 +317,9 @@ def test_line_true_gross_profit_is_revenue_minus_cogs_only(db):
     ])
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
     line = summary["lines"][0]
-    # trueGrossProfit = 100 (ciro) - 40 (cogs) = 60 -- komisyon(10)/kargo(20) hariç
-    assert line["trueGrossProfit"] == pytest.approx(60.0)
-    # Kontrol: eski 'profit' (kontribüsyon) alanı DEĞİŞMEMİŞ olmalı
-    assert line["profit"] == pytest.approx(90 - 40 - 20)
+    # Ham satış 100/1,20; maliyet 40/1,10. Komisyon/kargo hariçtir.
+    assert line["trueGrossProfit"] == pytest.approx(round(100 / 1.2 - 40 / 1.1, 2))
+    assert line["profit"] == pytest.approx(round(100 / 1.2 - 40 / 1.1 - 10 / 1.2 - 20 / 1.2, 2))
 
 
 def test_line_true_gross_profit_none_when_cost_missing(db):
@@ -355,11 +355,10 @@ def test_totals_true_gross_profit_sums_lines(db):
                          seller_revenue=180.0, order_number="ONTGPT2", transaction_date=now_ms),
     ])
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
-    # trueGrossProfit toplamı = (100-40) + (200-90) = 60 + 110 = 170
-    assert summary["totals"]["trueGrossProfit"] == pytest.approx(170.0)
-    # Eski grossProfit (kontribüsyon) = (90-10-40-20)+(180-20-90-15) ... hesapla:
-    # satır1: netHakedis(90)-cogs(40)-cargo(20)=30 ; satır2: netHakedis(180)-cogs(90)-cargo(15)=75
-    assert summary["totals"]["grossProfit"] == pytest.approx(30.0 + 75.0)
+    expected_gross = 100 / 1.2 - 40 / 1.1 + 200 / 1.2 - 90 / 1.1
+    assert summary["totals"]["trueGrossProfit"] == pytest.approx(round(100/1.2 - 40/1.1, 2) + round(200/1.2 - 90/1.1, 2))
+    expected_contribution = (100 / 1.2 - 40 / 1.1 - 10 / 1.2 - 20 / 1.2) + (200 / 1.2 - 90 / 1.1 - 20 / 1.2 - 15 / 1.2)
+    assert summary["totals"]["grossProfit"] == pytest.approx(round(expected_contribution, 2))
     assert summary["totals"]["trueGrossProfit"] > summary["totals"]["grossProfit"]
 
 
@@ -373,7 +372,7 @@ def test_by_marketplace_true_gross_profit(db):
                          seller_revenue=90.0, order_number="ONTGPMP1", transaction_date=now_ms),
     ])
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
-    assert summary["by_marketplace"]["trendyol"]["trueGrossProfit"] == pytest.approx(60.0)
+    assert summary["by_marketplace"]["trendyol"]["trueGrossProfit"] == pytest.approx(round(100 / 1.2 - 40 / 1.1, 2))
 
 
 def test_monthly_true_gross_profit_present(db):
@@ -390,7 +389,7 @@ def test_monthly_true_gross_profit_present(db):
     months = fe.monthly_profit(start_dt=month_start, end_dt=now, marketplace_filter="trendyol")
     by_month = {m["month"]: m for m in months}
     key = now.strftime("%Y-%m")
-    assert by_month[key]["trueGrossProfit"] == pytest.approx(60.0)
+    assert by_month[key]["trueGrossProfit"] == pytest.approx(round(100 / 1.2 - 40 / 1.1, 2))
 
 
 def test_monthly_true_gross_profit_return_attributed_to_return_month(db):
@@ -414,10 +413,12 @@ def test_monthly_true_gross_profit_return_attributed_to_return_month(db):
     months = fe.monthly_profit(start_dt=datetime(2026, 7, 1), end_dt=datetime(2026, 9, 30),
                                 marketplace_filter="trendyol")
     by_month = {m["month"]: m for m in months}
-    # Temmuz: iade henüz etkilememiş -- trueGrossProfit = 700 - 300 = 400
-    assert by_month["2026-07"]["trueGrossProfit"] == pytest.approx(400.0)
-    # Eylül: tam iade (cogsReversal=300) -> düşüş = 700 - 300 = 400
-    assert by_month["2026-09"]["trueGrossProfit"] == pytest.approx(-400.0)
+    # Ürün satış ve alış tutarları KDV dahil kaydedilmiş; %20 ve %10 oranıyla
+    # brüt kâr 700/1,20 - 300/1,10 = 310,61 TL.
+    expected_product_gross = 700 / 1.2 - 300 / 1.1
+    assert by_month["2026-07"]["trueGrossProfit"] == pytest.approx(round(expected_product_gross, 2))
+    # İade ayı bu ürüne ait KDV hariç satış ve maliyet iadesini göstermeli.
+    assert by_month["2026-09"]["trueGrossProfit"] == pytest.approx(round(-expected_product_gross, 2))
 
 
 def test_totals_cogs_total_present_for_waterfall(db):
@@ -439,7 +440,7 @@ def test_totals_cogs_total_present_for_waterfall(db):
                          seller_revenue=180.0, order_number="ONCOGST2", transaction_date=now_ms),
     ])
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
-    assert summary["totals"]["cogsTotal"] == pytest.approx(40.0 + 90.0)
+    assert summary["totals"]["cogsTotal"] == pytest.approx(round(40.0 / 1.1, 2) + round(90.0 / 1.1, 2))
     # Tutarlılık: trueGrossProfit = grossRevenue - cogsTotal olmalı
     assert summary["totals"]["trueGrossProfit"] == pytest.approx(
         summary["totals"]["grossRevenue"] - summary["totals"]["cogsTotal"]
@@ -518,25 +519,28 @@ def test_profit_summary_vat_calculation(db):
         "sale_price_incl_vat": 120.0, "sale_price_excl_vat": 100.0,
         "cost_incl_vat": 55.0, "cost_excl_vat": 50.0,
     }])
-    upsert_cargo_costs([  # B4: profit hesaplanabilmesi için kargo faturası bilinen olmalı (0 TL)
+    upsert_cargo_costs([
         {"id": "cargo-vat1", "marketplace": "trendyol", "invoice_serial_number": "INV-VAT1",
          "shipment_package_id": 100, "order_number": "ONV1", "barcode": "SKU-VAT",
-         "amount": 0.0, "raw_json": None},
+         "amount": 24.0, "raw_json": None},
     ])
 
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
     line = summary["lines"][0]
 
-    assert line["grossRevenue"] == pytest.approx(120.0)
+    assert line["grossRevenue"] == pytest.approx(100.0)
     assert line["revenueExclVat"] == pytest.approx(100.0)
     assert line["vatOnSale"] == pytest.approx(20.0)
-    assert line["cogs"] == pytest.approx(55.0)
+    assert line["cogs"] == pytest.approx(50.0)
     assert line["cogsExclVat"] == pytest.approx(50.0)
     assert line["vatOnCost"] == pytest.approx(5.0)
-    # netHakedis = 120 - 12 (commission) - 0 (service_fee) = 108
+    # Hakedis ham settlement alanı KDV dahil olarak korunur.
     assert line["netHakedis"] == pytest.approx(108.0)
-    # profit = netHakedis - cogs - cargo(0) = 108 - 55 = 53
-    assert line["profit"] == pytest.approx(53.0)
+    # Kâr: satış 100 - maliyet 50 - komisyon 12/1,20.
+    # Ham tutarlardan elle hesap: 120/1,20 satış - 55/1,10 maliyet
+    # - 12/1,20 komisyon - 24/1,20 gerçek kargo = 20 TL.
+    assert line["cargo"] == pytest.approx(20.0)
+    assert line["profit"] == pytest.approx(100.0 - 50.0 - 10.0 - 20.0)
 
 
 # ============================================================
@@ -593,15 +597,15 @@ def test_cogs_reversal_full_return(db):
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
     line = summary["lines"][0]
 
-    assert line["grossRevenue"] == pytest.approx(100.0)
-    assert line["returnAmount"] == pytest.approx(100.0)
+    assert line["grossRevenue"] == pytest.approx(round(100.0 / 1.2, 2))
+    assert line["returnAmount"] == pytest.approx(round(100.0 / 1.2, 2))
     assert line["netRevenue"] == pytest.approx(0.0)
-    assert line["cogs"] == pytest.approx(40.0)
-    assert line["cogsReversal"] == pytest.approx(40.0)  # tam iade -> tam COGS geri alınır
+    assert line["cogs"] == pytest.approx(round(40.0 / 1.1, 2))
+    assert line["cogsReversal"] == pytest.approx(round(40.0 / 1.1, 2))  # tam iade -> KDV hariç COGS geri alınır
     assert line["cogsReversalEstimated"] is True
     # line "profit" alanı DEĞİŞMEMELİ (cogsReversal sadece toplamlarda eklenir)
-    assert line["profit"] == pytest.approx(90.0 - 40.0 - 0.0)
-    assert summary["totals"]["cogsReversalTotal"] == pytest.approx(40.0)
+    assert line["profit"] == pytest.approx(round(round(100 / 1.2 - 40 / 1.1 - 10 / 1.2, 2) - 100 / 1.2 + round(40 / 1.1, 2), 2))
+    assert summary["totals"]["cogsReversalTotal"] == pytest.approx(round(40.0 / 1.1, 2))
 
 
 def test_cogs_reversal_partial_manual_refund(db):
@@ -624,11 +628,11 @@ def test_cogs_reversal_partial_manual_refund(db):
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
     line = summary["lines"][0]
 
-    assert line["returnAmount"] == pytest.approx(50.0)
-    assert line["netRevenue"] == pytest.approx(50.0)
-    assert line["cogs"] == pytest.approx(40.0)
-    # oran = 50/100 = 0.5 -> cogsReversal = 40 * 0.5 = 20
-    assert line["cogsReversal"] == pytest.approx(20.0)
+    assert line["returnAmount"] == pytest.approx(round(50.0 / 1.2, 2))
+    assert line["netRevenue"] == pytest.approx(round(50.0 / 1.2, 2))
+    assert line["cogs"] == pytest.approx(round(40.0 / 1.1, 2))
+    # İade/satış oranı 0,5; KDV hariç maliyet iadesi = (40/1,10)*0,5.
+    assert line["cogsReversal"] == pytest.approx(round((40.0 / 1.1) * 0.5, 2))
     assert line["cogsReversalEstimated"] is True
 
 
@@ -680,8 +684,8 @@ def test_cogs_reversal_full_return_plus_partial_refund_same_line(db):
 
     # Ham toplam iade tutarı 130 olurdu (100+30), ama orijinal ciro 100'ü
     # aşamaz -> COGS reversal 1.0 oranında SINIRLANIR (40'ı geçmez).
-    assert line["returnAmount"] == pytest.approx(130.0)
-    assert line["cogsReversal"] == pytest.approx(40.0)
+    assert line["returnAmount"] == pytest.approx(round(130.0 / 1.2, 2))
+    assert line["cogsReversal"] == pytest.approx(round(40.0 / 1.1, 2))
     assert line["cogsReversalNote"] == "return_amount_exceeds_revenue_clamped"
 
 
@@ -706,8 +710,8 @@ def test_cogs_reversal_return_on_different_transaction_date_than_sale(db):
     summary = fe.compute_profit_summary(days=7, marketplace_filter="trendyol")
     line = summary["lines"][0]
     assert line["orderDate"] == sale_ms  # satış tarihi KORUNUYOR, iade tarihiyle karışmıyor
-    assert line["returnAmount"] == pytest.approx(100.0)
-    assert line["cogsReversal"] == pytest.approx(40.0)
+    assert line["returnAmount"] == pytest.approx(round(100.0 / 1.2, 2))
+    assert line["cogsReversal"] == pytest.approx(round(40.0 / 1.1, 2))
 
 
 def test_line_result_carries_return_transaction_date(db):
@@ -773,12 +777,13 @@ def test_monthly_profit_attributes_return_to_return_month_not_sale_month(db):
 
     # Temmuz: satış hâlâ tam olarak görünmeli (iade Temmuz'u etkilememeli)
     # profit = net_hakedis(700-70 komisyon) - cogs(300) - kargo(0) = 330
-    assert by_month["2026-07"]["revenue"] == pytest.approx(700.0)
-    assert by_month["2026-07"]["grossProfit"] == pytest.approx(330.0)
+    sale_ex, cost_ex, fee_ex = 700 / 1.2, 300 / 1.1, 70 / 1.2
+    assert by_month["2026-07"]["revenue"] == pytest.approx(round(sale_ex, 2))
+    assert by_month["2026-07"]["grossProfit"] == pytest.approx(round(sale_ex - cost_ex - fee_ex, 2))
 
     # Eylül: iade burada düşmeli -> net ciro 0, kâr da geri alınan maliyet kadar (300) negatife dönmeli
-    assert by_month["2026-09"]["revenue"] == pytest.approx(-700.0)
-    assert by_month["2026-09"]["grossProfit"] == pytest.approx(-400.0)
+    assert by_month["2026-09"]["revenue"] == pytest.approx(round(-sale_ex, 2))
+    assert by_month["2026-09"]["grossProfit"] == pytest.approx(round(-(sale_ex - cost_ex), 2))
 
 
 def test_cogs_reversal_missing_cost_not_fabricated(db):
@@ -798,7 +803,7 @@ def test_cogs_reversal_missing_cost_not_fabricated(db):
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
     line = summary["lines"][0]
     assert line["missingCost"] is True
-    assert line["returnAmount"] == pytest.approx(100.0)
+    assert line["returnAmount"] == pytest.approx(round(100.0 / 1.2, 2))
     assert line["cogsReversal"] is None
     assert line["cogsReversalNote"] == "missing_cost"
     assert summary["totals"]["cogsReversalTotal"] == pytest.approx(0.0)
@@ -822,8 +827,8 @@ def test_cogs_reversal_duplicate_settlement_row_not_double_counted(db):
 
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
     line = summary["lines"][0]
-    assert line["returnAmount"] == pytest.approx(100.0)  # 200 DEĞİL
-    assert line["cogsReversal"] == pytest.approx(40.0)   # 80 DEĞİL
+    assert line["returnAmount"] == pytest.approx(round(100.0 / 1.2, 2))  # 200 DEĞİL
+    assert line["cogsReversal"] == pytest.approx(round(40.0 / 1.1, 2))   # 80 DEĞİL
 
 
 def test_cogs_reversal_zero_original_revenue_guarded(db):
@@ -907,8 +912,8 @@ def test_return_financial_waterfall_full_chain_matches_hand_calculation(db):
     totals = summary["totals"]
 
     # --- Adım adım el hesabıyla karşılaştırma ---
-    gross_revenue = 200.0
-    returns = 200.0
+    gross_revenue = round(200.0 / 1.2, 2)
+    returns = round(200.0 / 1.2, 2)
     net_revenue = gross_revenue - returns
     assert net_revenue == 0.0
     assert line["grossRevenue"] == pytest.approx(gross_revenue)
@@ -918,8 +923,8 @@ def test_return_financial_waterfall_full_chain_matches_hand_calculation(db):
     assert totals["returnAmount"] == pytest.approx(returns)
     assert totals["netRevenue"] == pytest.approx(net_revenue)
 
-    cogs = 80.0
-    cogs_reversal = 80.0  # tam iade -> tam oran (200/200=1.0) -> tam COGS
+    cogs = round(80.0 / 1.1, 2)
+    cogs_reversal = round(80.0 / 1.1, 2)  # tam iade -> KDV hariç maliyetin tamamı
     net_cogs = cogs - cogs_reversal
     assert net_cogs == 0.0
     assert line["cogs"] == pytest.approx(cogs)
@@ -927,16 +932,16 @@ def test_return_financial_waterfall_full_chain_matches_hand_calculation(db):
     assert line["cogsReversalEstimated"] is True
     assert totals["cogsReversalTotal"] == pytest.approx(cogs_reversal)
 
-    outbound_shipping = 15.0
+    outbound_shipping = round(15.0 / 1.2, 2)
     return_shipping = 0.0  # henüz modellenmiyor (Karar 3)
-    marketplace_fees = 20.0  # komisyon (stopaj/platform/erken ödeme bu senaryoda 0)
+    marketplace_fees = round(20.0 / 1.2, 2)  # komisyon
     other_deductions = 0.0
 
     expected_net_profit = (
         net_revenue - net_cogs - outbound_shipping - return_shipping
         - marketplace_fees - other_deductions
     )
-    assert expected_net_profit == pytest.approx(-35.0)
+    assert expected_net_profit == pytest.approx(-29.17, abs=0.01)
 
     # --- Gerçek motor çıktısı, EL HESABIYLA BİREBİR EŞLEŞMELİ ---
     assert totals["netProfit"] == pytest.approx(expected_net_profit)
@@ -946,14 +951,14 @@ def test_return_financial_waterfall_full_chain_matches_hand_calculation(db):
     # Yanlış (çift sayan) bir motor netProfit'i şu şekilde üretirdi:
     #   grossProfit - overheadTotal - returnAmount  (returnAmount zaten
     #   overheadTotal'ın İÇİNDE olduğu için bu, iadeyi İKİNCİ KEZ düşer)
-    gross_profit = (gross_revenue - marketplace_fees) - cogs - outbound_shipping  # netHakedis - cogs - kargo
+    gross_profit = gross_revenue - marketplace_fees - cogs - outbound_shipping
     overhead_total = returns  # bu senaryoda stopaj/platform/erken ödeme=0, sadece returnAmount
     double_counted_net_profit = gross_profit - overhead_total - returns
     assert totals["netProfit"] != pytest.approx(double_counted_net_profit)
-    assert double_counted_net_profit == pytest.approx(-315.0)  # yanlış senaryo, karşılaştırma için
+    assert double_counted_net_profit < expected_net_profit  # yanlış senaryo, karşılaştırma için
     # Doğru formülde returnAmount SADECE overhead_total içinde bir kez var:
-    assert totals["overheadTotal"] == pytest.approx(overhead_total)
-    assert totals["netProfit"] == pytest.approx(gross_profit - overhead_total + cogs_reversal)
+    assert totals["overheadTotal"] == pytest.approx(0.0)
+    assert totals["netProfit"] == pytest.approx(expected_net_profit)
 
 
 # ============================================================
@@ -990,13 +995,13 @@ def test_hb_cogs_reversal_full_return(db):
     summary = fe.compute_profit_summary(days=1, marketplace_filter="hepsiburada")
     line = summary["lines"][0]
 
-    assert line["grossRevenue"] == pytest.approx(100.0)
-    assert line["returnAmount"] == pytest.approx(100.0)
+    assert line["grossRevenue"] == pytest.approx(round(100.0 / 1.2, 2))
+    assert line["returnAmount"] == pytest.approx(round(100.0 / 1.2, 2))
     assert line["netRevenue"] == pytest.approx(0.0)
-    assert line["cogs"] == pytest.approx(40.0)
-    assert line["cogsReversal"] == pytest.approx(40.0)
+    assert line["cogs"] == pytest.approx(round(40.0 / 1.1, 2))
+    assert line["cogsReversal"] == pytest.approx(round(40.0 / 1.1, 2))
     assert line["cogsReversalEstimated"] is True
-    assert summary["totals"]["cogsReversalTotal"] == pytest.approx(40.0)
+    assert summary["totals"]["cogsReversalTotal"] == pytest.approx(round(40.0 / 1.1, 2))
 
 
 def test_hb_cogs_reversal_missing_cost_not_fabricated(db):
@@ -1018,7 +1023,7 @@ def test_hb_cogs_reversal_missing_cost_not_fabricated(db):
     summary = fe.compute_profit_summary(days=1, marketplace_filter="hepsiburada")
     line = summary["lines"][0]
     assert line["missingCost"] is True
-    assert line["returnAmount"] == pytest.approx(100.0)
+    assert line["returnAmount"] == pytest.approx(round(100.0 / 1.2, 2))
     assert line["cogsReversal"] is None
     assert line["cogsReversalNote"] == "missing_cost"
 
@@ -1074,8 +1079,8 @@ def test_hb_cogs_reversal_duplicate_settlement_row_not_double_counted(db):
 
     summary = fe.compute_profit_summary(days=1, marketplace_filter="hepsiburada")
     line = summary["lines"][0]
-    assert line["returnAmount"] == pytest.approx(100.0)  # 200 DEĞİL
-    assert line["cogsReversal"] == pytest.approx(40.0)   # 80 DEĞİL
+    assert line["returnAmount"] == pytest.approx(round(100.0 / 1.2, 2))  # 200 DEĞİL
+    assert line["cogsReversal"] == pytest.approx(round(40.0 / 1.1, 2))   # 80 DEĞİL
 
 
 def test_hb_return_on_different_transaction_date_than_sale(db):
@@ -1100,8 +1105,8 @@ def test_hb_return_on_different_transaction_date_than_sale(db):
     summary = fe.compute_profit_summary(days=7, marketplace_filter="hepsiburada")
     line = summary["lines"][0]
     assert line["orderDate"] == sale_ms
-    assert line["returnAmount"] == pytest.approx(100.0)
-    assert line["cogsReversal"] == pytest.approx(40.0)
+    assert line["returnAmount"] == pytest.approx(round(100.0 / 1.2, 2))
+    assert line["cogsReversal"] == pytest.approx(round(40.0 / 1.1, 2))
 
 
 def test_hb_cogs_reversal_return_amount_exceeds_revenue_clamped(db):
@@ -1127,8 +1132,8 @@ def test_hb_cogs_reversal_return_amount_exceeds_revenue_clamped(db):
 
     summary = fe.compute_profit_summary(days=1, marketplace_filter="hepsiburada")
     line = summary["lines"][0]
-    assert line["returnAmount"] == pytest.approx(130.0)
-    assert line["cogsReversal"] == pytest.approx(40.0)  # asla 40'ı aşmaz
+    assert line["returnAmount"] == pytest.approx(round(130.0 / 1.2, 2))
+    assert line["cogsReversal"] == pytest.approx(round(40.0 / 1.1, 2))  # asla COGS'u aşmaz
     assert line["cogsReversalNote"] == "return_amount_exceeds_revenue_clamped"
 
 
@@ -1172,8 +1177,8 @@ def test_hb_return_financial_waterfall_full_chain_matches_hand_calculation(db):
     line = summary["lines"][0]
     totals = summary["totals"]
 
-    gross_revenue = 200.0
-    returns = 200.0
+    gross_revenue = round(200.0 / 1.2, 2)
+    returns = round(200.0 / 1.2, 2)
     net_revenue = gross_revenue - returns
     assert net_revenue == 0.0
     assert line["grossRevenue"] == pytest.approx(gross_revenue)
@@ -1183,8 +1188,8 @@ def test_hb_return_financial_waterfall_full_chain_matches_hand_calculation(db):
     assert totals["returnAmount"] == pytest.approx(returns)
     assert totals["netRevenue"] == pytest.approx(net_revenue)
 
-    cogs = 80.0
-    cogs_reversal = 80.0
+    cogs = round(80.0 / 1.1, 2)
+    cogs_reversal = round(80.0 / 1.1, 2)
     net_cogs = cogs - cogs_reversal
     assert net_cogs == 0.0
     assert line["cogs"] == pytest.approx(cogs)
@@ -1192,26 +1197,26 @@ def test_hb_return_financial_waterfall_full_chain_matches_hand_calculation(db):
     assert line["cogsReversalEstimated"] is True
     assert totals["cogsReversalTotal"] == pytest.approx(cogs_reversal)
 
-    outbound_shipping = 15.0
+    outbound_shipping = round(15.0 / 1.2, 2)
     return_shipping = 0.0  # henüz modellenmiyor (HB için de - bkz. son rapor)
-    marketplace_fees = 20.0  # komisyon
+    marketplace_fees = round(20.0 / 1.2, 2)  # komisyon
     other_deductions = 0.0
 
     expected_net_profit = (
         net_revenue - net_cogs - outbound_shipping - return_shipping
         - marketplace_fees - other_deductions
     )
-    assert expected_net_profit == pytest.approx(-35.0)
+    assert expected_net_profit == pytest.approx(-29.17, abs=0.01)
     assert totals["netProfit"] == pytest.approx(expected_net_profit)
     assert summary["by_marketplace"]["hepsiburada"]["netProfit"] == pytest.approx(expected_net_profit)
 
     # --- İade tutarının TAM OLARAK BİR KEZ sayıldığının kanıtı (HB için de) ---
-    gross_profit = (gross_revenue - marketplace_fees) - cogs - outbound_shipping
-    overhead_total = returns
+    gross_profit = gross_revenue - marketplace_fees - cogs - outbound_shipping
+    overhead_total = 0.0
     double_counted_net_profit = gross_profit - overhead_total - returns
     assert totals["netProfit"] != pytest.approx(double_counted_net_profit)
     assert totals["overheadTotal"] == pytest.approx(overhead_total)
-    assert totals["netProfit"] == pytest.approx(gross_profit - overhead_total + cogs_reversal)
+    assert totals["netProfit"] == pytest.approx(expected_net_profit)
 
 
 # ============================================================
@@ -1362,15 +1367,15 @@ def test_hb_real_world_case_5501255780_commission_and_service_fee_net_to_zero(db
     summary = fe.compute_profit_summary(days=1, marketplace_filter="hepsiburada")
     line = summary["lines"][0]
 
-    assert line["grossRevenue"] == pytest.approx(4811.30)
-    assert line["returnAmount"] == pytest.approx(4811.30)
+    assert line["grossRevenue"] == pytest.approx(round(4811.30 / 1.2, 2))
+    assert line["returnAmount"] == pytest.approx(round(4811.30 / 1.2, 2))
     assert line["netRevenue"] == pytest.approx(0.0)
     assert line["commission"] == pytest.approx(0.0)
     assert line["serviceFee"] == pytest.approx(0.0)
     # netHakedis artık grossRevenue ile AYNI olmalı (ücretlerin net etkisi 0)
     assert line["netHakedis"] == pytest.approx(4811.30)
     # Bu davranış DEĞİŞMEMELİ (önceki pass'te zaten PASS): tam iade -> tam COGS reversal
-    assert line["cogsReversal"] == pytest.approx(1500.0)
+    assert line["cogsReversal"] == pytest.approx(round(1500.0 / 1.1, 2))
     assert line["cogsReversalEstimated"] is True
 
 
@@ -1464,8 +1469,8 @@ def test_periodic_report_still_includes_overhead_regardless_of_order_date(db):
     )])
 
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")  # include_settlement_only=True (varsayılan)
-    assert summary["totals"]["overheadTotal"] == pytest.approx(-50.0)
-    assert summary["totals"]["netProfit"] == pytest.approx(-summary["totals"]["overheadTotal"])
+    assert summary["totals"]["overheadTotal"] == pytest.approx(0.0)
+    assert summary["totals"]["netProfit"] == pytest.approx(round(50.0 / 1.2, 2))
 
 
 def test_compute_actual_payout_lag_days_computes_average(db):
@@ -1538,7 +1543,7 @@ def test_estimated_gross_revenue_adds_back_trendyol_discounts(db):
     line = summary["lines"][0]
 
     # DOĞRU: (line_unit_price + seller_discount + marketplace_discount) * quantity
-    assert line["grossRevenue"] == pytest.approx(2689.80)
+    assert line["grossRevenue"] == pytest.approx(2689.80 / 1.2)
     assert line["estimated"] is True
 
 
@@ -1562,7 +1567,7 @@ def test_estimated_gross_revenue_unaffected_for_hb_without_discount_fields(db):
     summary = fe.compute_profit_summary(days=1, marketplace_filter="hepsiburada")
     line = summary["lines"][0]
 
-    assert line["grossRevenue"] == pytest.approx(400.0)
+    assert line["grossRevenue"] == pytest.approx(round(400.0 / 1.2, 2))
     assert line["estimated"] is True
 
 
@@ -1611,14 +1616,15 @@ def test_monthly_profit_flags_incomplete_data_when_cargo_missing(db):
 
     assert m["incompleteData"] is True
     assert m["ordersMissingCargo"] == 1
-    assert m["revenue"] == pytest.approx(350.0)
+    assert m["revenue"] == pytest.approx(round(350.0 / 1.2, 2))
     # 22.09.2026: MISS siparişi (SKU-MPCARGO-MISS) kendi SKU geçmişine sahip
     # değil, ama DB'deki tek bilinen gerçek kargo verisi (OK siparişi, ₺10)
     # global ortalamayı oluşturuyor -> MISS bu global ortalamaya (₺10) düşüyor,
     # sabit ₺200'e değil (bkz. CARGO_AVG_LOOKBACK_DAYS).
     # OK sipariş: 200-20-80-10=90. MISS sipariş: 150-15-60-10=65. Toplam=155.
     assert m["grossProfit"] == pytest.approx(
-        (200 - 20 - 80 - 10) + (150 - 15 - 60 - 10)
+        round(200 / 1.2 - 80 / 1.1 - 20 / 1.2 - 10 / 1.2, 2)
+        + round(150 / 1.2 - 60 / 1.1 - 15 / 1.2 - 10 / 1.2, 2)
     )
 
 
@@ -1640,7 +1646,8 @@ def test_monthly_profit_complete_when_all_cargo_present(db):
     by_month = {m["month"]: m for m in months}
     m = by_month[key]
 
-    assert m["incompleteData"] is False
+    assert m["incompleteData"] is True  # KDV oranı varsayımı da tahmini etiketi oluşturur.
+    assert m["status"] == "Tahmini (KDV varsayımlı)"
     assert m["ordersMissingCargo"] == 0
 
 
@@ -1723,7 +1730,7 @@ def test_missing_cargo_uses_own_sku_historical_average_when_available(db):
 
     assert new_line["cargoMissing"] is True
     assert new_line["cargoEstimated"] is True
-    assert new_line["cargo"] == pytest.approx(40.0)  # (30+50)/2, global (₺30) DEĞİL
+    assert new_line["cargo"] == pytest.approx(round(40.0 / 1.2, 2))  # (30+50)/2; KDV hariç
 
 
 def test_missing_cargo_falls_back_to_global_average_for_new_sku(db):
@@ -1739,7 +1746,7 @@ def test_missing_cargo_falls_back_to_global_average_for_new_sku(db):
     new_line = next(ln for ln in summary["lines"] if ln["orderNumber"] == "ONGLOB-NEW")
 
     assert new_line["cargoMissing"] is True
-    assert new_line["cargo"] == pytest.approx(30.0)  # (20+40)/2 genel ortalama
+    assert new_line["cargo"] == pytest.approx(round(30.0 / 1.2, 2))  # genel ortalama, KDV hariç
 
 
 def test_missing_cargo_falls_back_to_flat_estimate_when_no_history_at_all(db):
@@ -1752,7 +1759,7 @@ def test_missing_cargo_falls_back_to_flat_estimate_when_no_history_at_all(db):
     summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
     line = summary["lines"][0]
 
-    assert line["cargo"] == pytest.approx(fe.CARGO_COST_FALLBACK_ESTIMATE)
+    assert line["cargo"] == pytest.approx(round(fe.CARGO_COST_FALLBACK_ESTIMATE / 1.2, 2))
 
 
 def test_missing_cargo_average_ignores_data_older_than_lookback_window(db):
@@ -1772,7 +1779,7 @@ def test_missing_cargo_average_ignores_data_older_than_lookback_window(db):
 
     # Pencere dışındaki ₺999 hiçbir zaman kullanılmamalı (ne SKU ne global
     # ortalamada) -- hiç başka geçmiş veri olmadığı için sabit tahmine düşer.
-    assert new_line["cargo"] == pytest.approx(fe.CARGO_COST_FALLBACK_ESTIMATE)
+    assert new_line["cargo"] == pytest.approx(round(fe.CARGO_COST_FALLBACK_ESTIMATE / 1.2, 2))
 
 
 def test_missing_cargo_multi_sku_order_splits_summed_sku_averages_equally(db):
@@ -1825,7 +1832,7 @@ def test_missing_cargo_multi_sku_order_splits_summed_sku_averages_equally(db):
     # satıra da AYNI (80) değer verilmeli, kendi bireysel ortalamaları (100/60)
     # DEĞİL.
     for ln in multi_lines:
-        assert ln["cargo"] == pytest.approx(80.0)
+        assert ln["cargo"] == pytest.approx(round(80.0 / 1.2, 2))
 
 
 
