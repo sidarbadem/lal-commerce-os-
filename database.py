@@ -771,10 +771,59 @@ def init_db():
             label TEXT NOT NULL,
             amount REAL NOT NULL,
             note TEXT,
+            vat_amount REAL,
             created_at TEXT DEFAULT (datetime('now', 'localtime')),
             updated_at TEXT DEFAULT (datetime('now', 'localtime'))
         )
         """)
+
+        # Expense classification and VAT assumptions. Existing fixed_expenses
+        # rows remain untouched; aliases classify their labels at read time.
+        c.execute("ALTER TABLE fixed_expenses ADD COLUMN vat_amount REAL") if "vat_amount" not in [r[1] for r in c.execute("PRAGMA table_info(fixed_expenses)")] else None
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS expense_type_settings (
+            type_key TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            group_name TEXT NOT NULL DEFAULT 'business',
+            vat_included INTEGER NOT NULL DEFAULT 1,
+            vat_rate REAL NOT NULL DEFAULT 0.20
+        )
+        """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS expense_type_aliases (
+            alias TEXT PRIMARY KEY,
+            type_key TEXT NOT NULL REFERENCES expense_type_settings(type_key)
+        )
+        """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS vat_settings (
+            setting_key TEXT PRIMARY KEY,
+            vat_included INTEGER NOT NULL DEFAULT 1,
+            vat_rate REAL NOT NULL DEFAULT 0.20
+        )
+        """)
+        expense_types = [
+            ('accounting', 'Muhasebe', 'business', .20, ['Muhasebe']),
+            ('einvoice_hb', 'E-Fatura Kontör / Hepsiburada', 'business', .20, ['E-Fatura Kontör / Hepsiburada']),
+            ('einvoice_ty', 'E-Fatura Kontör / Trendyol', 'business', .20, ['E-Fatura Kontör / Trendyol']),
+            ('ads_hb', 'Pazaryeri Reklam / Hepsiburada', 'business', .20, ['Pazaryeri Reklam / Hepsiburada']),
+            ('ads_ty', 'Pazaryeri Reklam / Trendyol', 'business', .20, ['Pazaryeri Reklam / Trendyol']),
+            ('tax_withholding', 'Gelir vergisi stopajı', 'tax', 0, ['0003 GELİR VERGİSİ S. (MUHTASAR)', 'Tahakkuk - Gelir (Muhtasar)', 'Tahakkuk - Gelir Stopaj Muhtasar']),
+            ('vat_payment', 'Ödenen KDV', 'tax', 0, ['0015 GERÇEK USUL KATMA DEĞER VERGİSİ', '0015 GERÇEK USULDE KATMA DEĞER VERGİSİ', 'Gerçek Usulde KDV', 'Gerçek Usül Katma Değer Vergisi', 'KDV 1 - Tahakkuk', 'Tahakkuk - KDV1']),
+            ('vat_withholding', 'KDV Tevkifatı', 'tax', 0, ['4017 KDV Tevkifatı', 'KDV TEVKİFAT', 'KDV Tevfikat']),
+            ('bagkur', '4B Bağ-Kur', 'tax', 0, ['4B Bağ-Kur']),
+            ('provisional_tax', 'Geçici vergi', 'tax', 0, ['G.GEÇİCİ -Tahakkuk', 'Gelir Geçici Vergi']),
+        ]
+        for type_key, display_name, group_name, rate, aliases in expense_types:
+            c.execute("INSERT OR IGNORE INTO expense_type_settings (type_key, display_name, group_name, vat_included, vat_rate) VALUES (?,?,?,?,?)", (type_key, display_name, group_name, 1, rate))
+            for alias in aliases:
+                c.execute("INSERT OR IGNORE INTO expense_type_aliases (alias, type_key) VALUES (?,?)", (alias, type_key))
+        for key in ('sale', 'cost', 'commission', 'service', 'cargo', 'advertising', 'manual_expense'):
+            default_included = 1
+            default_rate = 0.20
+            if key in ('commission', 'service'):
+                default_included, default_rate = 1, 0.20
+            c.execute("INSERT OR IGNORE INTO vat_settings (setting_key, vat_included, vat_rate) VALUES (?,?,?)", (key, default_included, default_rate))
 
         # --- Senkronizasyon durumu (basit key-value) ---
         c.execute("""
@@ -1673,22 +1722,65 @@ def list_fixed_expenses(month=None):
         return [dict(r) for r in rows]
 
 
+def list_expense_type_settings():
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT s.type_key,s.display_name,s.group_name,s.vat_included,s.vat_rate,
+                   GROUP_CONCAT(a.alias, ' | ') AS aliases
+            FROM expense_type_settings s LEFT JOIN expense_type_aliases a USING(type_key)
+            GROUP BY s.type_key ORDER BY s.display_name
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+
+def save_expense_type_setting(row):
+    if row.get("group_name") not in ("business", "tax"):
+        raise ValueError("group_name business veya tax olmalı")
+    if float(row.get("vat_rate", 0)) not in (0.0, 0.10, 0.20):
+        raise ValueError("KDV oranı %0, %10 veya %20 olmalı")
+    with get_connection() as conn:
+        conn.execute("UPDATE expense_type_settings SET group_name=?,vat_included=?,vat_rate=? WHERE type_key=?",
+                     (row["group_name"], int(bool(row.get("vat_included", 1))), float(row["vat_rate"]), row["type_key"]))
+        if row.get("alias"):
+            conn.execute("INSERT OR IGNORE INTO expense_type_aliases(alias,type_key) VALUES (?,?)", (row["alias"], row["type_key"]))
+        result = conn.execute("SELECT * FROM expense_type_settings WHERE type_key=?", (row["type_key"],)).fetchone()
+        return dict(result) if result else None
+
+
+def list_vat_settings():
+    with get_connection() as conn:
+        return [dict(r) for r in conn.execute("SELECT * FROM vat_settings ORDER BY setting_key").fetchall()]
+
+
+def save_vat_setting(row):
+    if float(row.get("vat_rate", 0)) not in (0.0, 0.10, 0.20):
+        raise ValueError("KDV oranı %0, %10 veya %20 olmalı")
+    with get_connection() as conn:
+        conn.execute("UPDATE vat_settings SET vat_included=?,vat_rate=? WHERE setting_key=?",
+                     (int(bool(row.get("vat_included", 1))), float(row["vat_rate"]), row["setting_key"]))
+        result = conn.execute("SELECT * FROM vat_settings WHERE setting_key=?", (row["setting_key"],)).fetchone()
+        return dict(result) if result else None
+
+
 def upsert_fixed_expense(row):
     """row: {id?, month, label, amount, note?}. 'id' verilmişse günceller,
     verilmemişse yeni kalem ekler. Eklenen/güncellenen satırı dict olarak döner."""
+    row = dict(row)
+    row.setdefault("vat_amount", None)
     with get_connection() as conn:
         if row.get("id"):
             conn.execute("""
                 UPDATE fixed_expenses
                 SET month = :month, label = :label, amount = :amount, note = :note,
+                    vat_amount = :vat_amount,
                     updated_at = datetime('now', 'localtime')
                 WHERE id = :id
             """, row)
             new_id = row["id"]
         else:
             cur = conn.execute("""
-                INSERT INTO fixed_expenses (month, label, amount, note)
-                VALUES (:month, :label, :amount, :note)
+                INSERT INTO fixed_expenses (month, label, amount, note, vat_amount)
+                VALUES (:month, :label, :amount, :note, :vat_amount)
             """, row)
             new_id = cur.lastrowid
         result = conn.execute("SELECT * FROM fixed_expenses WHERE id = ?", (new_id,)).fetchone()

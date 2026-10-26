@@ -15,6 +15,7 @@
   <div class="lal-tabs" id="finans-tabs">
     <button type="button" class="lal-tab is-active" data-tab="fin-genel-bakis">Genel Bakış</button>
     <button type="button" class="lal-tab" data-tab="fin-sabit-giderler">Sabit Giderler</button>
+    <button type="button" class="lal-tab" data-tab="fin-kdv-ayarlari">KDV &amp; Gider Türleri</button>
     <button type="button" class="lal-tab" data-tab="fin-hakedis-takvimi">Hakediş Takvimi</button>
     <button type="button" class="lal-tab" data-tab="fin-toptanci-borcu">Toptancı Borcu</button>
   </div>
@@ -46,7 +47,7 @@
   <div class="lal-tab-panel" id="fin-sabit-giderler">
     <div class="panel">
       <h2>Aylık Sabit Giderler</h2>
-      <p class="panel-note">Kira, personel maaşı, muhasebe, elektrik, paketleme malzemesi gibi sipariş bazlı olmayan, ay bazlı sabit giderler. Buraya girilen tutarlar, ilgili ayın Net Kâr'ından düşülerek "Gerçek Net Kâr" olarak Aylık Kâr Trendi grafiğinde gösterilir.</p>
+      <p class="panel-note">Buradaki işletme giderleri faaliyet kârından; vergi ve prim kayıtları ise ayrıca “Vergiler sonrası elde kalan” tutardan düşer.</p>
 
       <div class="lal-field-row lal-mb-4">
         <div class="lal-field">
@@ -60,6 +61,10 @@
         <div class="lal-field lal-field--md">
           <label for="fe-amount">Tutar (₺) *</label>
           <input type="number" step="0.01" id="fe-amount" placeholder="15000">
+        </div>
+        <div class="lal-field">
+          <label for="fe-vat-amount">KDV tutarı (₺)</label>
+          <input type="number" step="0.01" id="fe-vat-amount" placeholder="Boş bırakılabilir">
         </div>
         <div class="lal-field lal-field-grow">
           <label for="fe-note">Not</label>
@@ -76,6 +81,7 @@
               <th>Ay</th>
               <th>Kalem</th>
               <th>Tutar</th>
+              <th>KDV</th>
               <th>Not</th>
               <th></th>
             </tr>
@@ -83,6 +89,19 @@
           <tbody id="fe-tbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <div class="lal-tab-panel" id="fin-kdv-ayarlari">
+    <div class="panel">
+      <h2>KDV hesaplama ayarları</h2>
+      <p class="panel-note">KDV kaynağında ayrı değilse, seçilen oran ve “KDV dâhil” ayarıyla çevrilir. Bu dönüşüm ayı tahmini olarak işaretler.</p>
+      <div class="table-scroll"><table><thead><tr><th>Kalem</th><th>KDV dâhil</th><th>Oran</th></tr></thead><tbody id="vat-settings-tbody"></tbody></table></div>
+    </div>
+    <div class="panel lal-mt-4">
+      <h2>Elle gider türleri</h2>
+      <p class="panel-note">Grup faaliyet kârına veya vergi/prim sonrası satırına yönlendirir. Eski gider adları silinmeden eşleme tablosuyla sınıflandırılır.</p>
+      <div class="table-scroll"><table><thead><tr><th>Tür ve eski yazımları</th><th>Grup</th><th>KDV dâhil</th><th>Oran</th><th>Yeni eski-yazım eşlemesi</th></tr></thead><tbody id="expense-types-tbody"></tbody></table></div>
     </div>
   </div>
 

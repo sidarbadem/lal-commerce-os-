@@ -16,7 +16,7 @@
   function renderFixedExpensesTable(items) {
     const tbody = document.getElementById('fe-tbody');
     if (!items.length) {
-      tbody.innerHTML = emptyStateRow(5, 'Henüz sabit gider girilmemiş.');
+      tbody.innerHTML = emptyStateRow(6, 'Henüz sabit gider girilmemiş.');
       return;
     }
     tbody.innerHTML = items.map(it => `
@@ -24,6 +24,7 @@
         <td>${fmtMonthLabel(it.month)}</td>
         <td>${it.label}</td>
         <td>${fmtTL(it.amount)}</td>
+        <td>${it.vat_amount == null ? '—' : fmtTL(it.vat_amount)}</td>
         <td style="color:var(--text-muted);">${it.note || ''}</td>
         <td><button class="inline-save-btn fe-delete" data-id="${it.id}" style="background:none; color:var(--red); border-color:var(--red);">Sil</button></td>
       </tr>
@@ -49,19 +50,19 @@
   async function loadFixedExpenses() {
     safeDisplay('fe-loading', 'none');
     safeDisplay('fe-table-wrap', 'block');
-    document.getElementById('fe-tbody').innerHTML = skeletonTableRows(5, 3, [18, 22, 14, 30, 10]);
+      document.getElementById('fe-tbody').innerHTML = skeletonTableRows(6, 3, [14, 18, 14, 12, 26, 10]);
     try {
       const res = await fetch('/api/fixed-expenses');
       const data = await res.json();
       if (data.error) {
         showError(data.error);
-        document.getElementById('fe-tbody').innerHTML = errorStateRow(5, data.error);
+        document.getElementById('fe-tbody').innerHTML = errorStateRow(6, data.error);
         return;
       }
       renderFixedExpensesTable(data.items || []);
     } catch (e) {
       showError('Sabit giderler alınamadı: ' + e.message);
-      document.getElementById('fe-tbody').innerHTML = errorStateRow(5, e.message);
+      document.getElementById('fe-tbody').innerHTML = errorStateRow(6, e.message);
     }
   }
 
@@ -69,6 +70,7 @@
     const month = document.getElementById('fe-month').value;
     const label = document.getElementById('fe-label').value.trim();
     const amount = document.getElementById('fe-amount').value;
+    const vatAmount = document.getElementById('fe-vat-amount').value;
     const note = document.getElementById('fe-note').value.trim();
     const msgEl = document.getElementById('fe-form-msg');
 
@@ -83,7 +85,7 @@
       const res = await fetch('/api/fixed-expenses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month, label, amount: parseFloat(amount), note: note || undefined }),
+        body: JSON.stringify({ month, label, amount: parseFloat(amount), vat_amount: vatAmount === '' ? null : parseFloat(vatAmount), note: note || undefined }),
       });
       const data = await res.json();
       msgEl.classList.remove('is-hidden');
@@ -95,6 +97,7 @@
         msgEl.innerHTML = `${ICON_CHECK_SM}<span style="vertical-align:middle; margin-left:5px;">"${label}" kaydedildi.</span>`;
         document.getElementById('fe-label').value = '';
         document.getElementById('fe-amount').value = '';
+        document.getElementById('fe-vat-amount').value = '';
         document.getElementById('fe-note').value = '';
         await loadFixedExpenses();
       }
@@ -112,6 +115,36 @@
     const now = new Date();
     feMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   })();
+
+  const vatLabels = { sale: 'Satış', cost: 'Ürün maliyeti', commission: 'Komisyon', service: 'Hizmet bedeli', cargo: 'Kargo', advertising: 'Reklam', manual_expense: 'Elle gider' };
+  const vatRateOptions = (rate) => [0, 0.1, 0.2].map(v => `<option value="${v}" ${Number(rate) === v ? 'selected' : ''}>%${Math.round(v * 100)}</option>`).join('');
+  async function saveVatRow(row) {
+    const res = await fetch('/api/vat-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) });
+    const data = await res.json(); if (data.error) throw new Error(data.error);
+  }
+  async function loadVatSettings() {
+    const res = await fetch('/api/vat-settings'); const data = await res.json();
+    const body = document.getElementById('vat-settings-tbody'); if (!body) return;
+    body.innerHTML = (data.items || []).map(it => `<tr><td>${vatLabels[it.setting_key] || it.setting_key}</td><td><select data-vat-key="${it.setting_key}" data-field="vat_included"><option value="1" ${it.vat_included ? 'selected' : ''}>Dâhil</option><option value="0" ${!it.vat_included ? 'selected' : ''}>Hariç</option></select></td><td><select data-vat-key="${it.setting_key}" data-field="vat_rate">${vatRateOptions(it.vat_rate)}</select></td></tr>`).join('');
+    body.querySelectorAll('select').forEach(el => el.addEventListener('change', async () => {
+      const row = body.querySelectorAll(`[data-vat-key="${el.dataset.vatKey}"]`);
+      const values = Object.fromEntries([...row].map(x => [x.dataset.field, x.value]));
+      try { await saveVatRow({ setting_key: el.dataset.vatKey, vat_included: values.vat_included === '1', vat_rate: Number(values.vat_rate) }); }
+      catch (e) { showError('KDV ayarı kaydedilemedi: ' + e.message); }
+    }));
+  }
+  async function loadExpenseTypes() {
+    const res = await fetch('/api/expense-type-settings'); const data = await res.json();
+    const body = document.getElementById('expense-types-tbody'); if (!body) return;
+    body.innerHTML = (data.items || []).map(it => `<tr data-type-key="${it.type_key}"><td><strong>${it.display_name}</strong><br><small>${it.aliases || ''}</small></td><td><select data-field="group_name"><option value="business" ${it.group_name === 'business' ? 'selected' : ''}>İşletme gideri</option><option value="tax" ${it.group_name === 'tax' ? 'selected' : ''}>Vergi / prim</option></select></td><td><select data-field="vat_included"><option value="1" ${it.vat_included ? 'selected' : ''}>Dâhil</option><option value="0" ${!it.vat_included ? 'selected' : ''}>Hariç</option></select></td><td><select data-field="vat_rate">${vatRateOptions(it.vat_rate)}</select></td><td><input type="text" data-field="alias" placeholder="Yeni yazım (isteğe bağlı)"><button type="button" class="inline-save-btn expense-type-save">Kaydet</button></td></tr>`).join('');
+    body.querySelectorAll('.expense-type-save').forEach(btn => btn.addEventListener('click', async () => {
+      const tr = btn.closest('tr'); const vals = Object.fromEntries([...tr.querySelectorAll('[data-field]')].map(x => [x.dataset.field, x.value]));
+      try { const r = await fetch('/api/expense-type-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type_key: tr.dataset.typeKey, group_name: vals.group_name, vat_included: vals.vat_included === '1', vat_rate: Number(vals.vat_rate), alias: vals.alias || undefined }) }); const d = await r.json(); if (d.error) throw new Error(d.error); await loadExpenseTypes(); }
+      catch (e) { showError('Gider türü kaydedilemedi: ' + e.message); }
+    }));
+  }
+  if (document.getElementById('vat-settings-tbody')) loadVatSettings();
+  if (document.getElementById('expense-types-tbody')) loadExpenseTypes();
 
   // ---------- Başlangıç ----------
   loadFixedExpenses();

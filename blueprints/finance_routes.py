@@ -19,6 +19,10 @@ from database import (
     get_sync_progress,
     list_fixed_expenses,
     upsert_fixed_expense,
+    list_expense_type_settings,
+    save_expense_type_setting,
+    list_vat_settings,
+    save_vat_setting,
 )
 from sync_lock import sync_lock_status
 from sync_core import (
@@ -196,6 +200,7 @@ def api_fixed_expenses():
         "label": label,
         "amount": amount,
         "note": data.get("note") or None,
+        "vat_amount": (float(data["vat_amount"]) if data.get("vat_amount") not in (None, "") else None),
     }
     try:
         saved = upsert_fixed_expense(row)
@@ -211,3 +216,27 @@ def api_delete_fixed_expense(expense_id):
     except Exception as e:
         return jsonify({"error": f"Silme hatası: {e}"}), 500
     return jsonify({"ok": True, "id": expense_id})
+
+
+@bp.route("/api/expense-type-settings", methods=["GET", "POST"])
+def api_expense_type_settings():
+    if request.method == "GET":
+        return jsonify({"items": list_expense_type_settings()})
+    data = request.get_json(silent=True) or {}
+    try:
+        item = save_expense_type_setting(data)
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "item": item})
+
+
+@bp.route("/api/vat-settings", methods=["GET", "POST"])
+def api_vat_settings():
+    if request.method == "GET":
+        return jsonify({"items": list_vat_settings()})
+    data = request.get_json(silent=True) or {}
+    try:
+        item = save_vat_setting(data)
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "item": item})

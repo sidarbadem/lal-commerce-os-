@@ -267,7 +267,6 @@
     const suggestedPrice = cost / denom;
     const commissionAmount = suggestedPrice * (commission / 100);
     const netAfterCommission = suggestedPrice - commissionAmount;
-    const profit = netAfterCommission - cost;
 
     resultEl.style.background = 'var(--lal-green-dim)';
     resultEl.style.borderColor = 'color-mix(in srgb, var(--lal-green) 30%, transparent)';
@@ -278,7 +277,7 @@
         Tahmini komisyon (%${commission}): ${fmtTL2(commissionAmount)}<br>
         Komisyon sonrası net: ${fmtTL2(netAfterCommission)}<br>
         Ürün maliyeti: ${fmtTL2(cost)}<br>
-        Tahmini kâr: <strong style="color:var(--green);">${fmtTL2(profit)}</strong> (satış fiyatının %${targetMargin}'i)
+        Hedef marj varsayımı: %${targetMargin}. Gerçek ürün kârı satış ve finans raporlarındaki ortak kâr motorunda hesaplanır.
       </div>
       <div style="font-size:11.5px; color:var(--text-muted); margin-top:10px;">
         <strong>Not:</strong> Bu hesap kargo, stopaj, erken ödeme kesintisi gibi diğer maliyetleri içermez — kaba bir tahmindir.

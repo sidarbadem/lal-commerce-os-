@@ -44,7 +44,7 @@
     var defs = [
       ['netRevenue', 'Net ciro', money],
       ['netProfit', 'Net kâr', money],
-      ['realNetProfit', 'Gerçek net kâr (sabit giderler sonrası)', money],
+      ['realNetProfit', 'Vergiler sonrası elde kalan', money],
       ['orderCount', 'Sipariş', num],
       ['avgBasket', 'Ortalama sepet', money],
       ['unitCount', 'Satılan adet', num]
@@ -67,11 +67,13 @@
       ['serviceFee', 'Hizmet bedeli', false, false],
       ['cargoTotal', 'Kargo', false, false],
       ['grossProfit', 'Brüt kâr', true, true],
-      ['overheadTotal', 'Dönemsel giderler (iade, stopaj, platform bedeli)', false, false],
+      ['overheadTotal', 'Dönemsel giderler (iade ve platform kesintileri)', false, false],
       ['cogsReversalTotal', 'İade edilen ürünlerin maliyet geri alımı', true, false],
       ['netProfit', 'Net kâr', true, true],
       ['fixedExpenses', 'Sabit giderler', false, false],
       ['realNetProfit', 'Gerçek net kâr', true, true],
+      ['withholdingForOffset', 'Mahsup edilecek stopaj', false, false],
+      ['vatWithholdingNotOffset', 'Tevkifat (mahsup doğrulanmadı)', false, false],
       ['returnAmount', 'İadeler (bilgi, dönemsel giderlerin içinde)', false, false, true],
       ['netRevenue', 'Net ciro (bilgi)', true, false, true]
     ];
@@ -174,6 +176,10 @@
     if (dq.skusMissingCost && dq.skusMissingCost.length) {
       out.push('Maliyeti girilmemiş ürün var: ' + dq.skusMissingCost.slice(0, 6).join(', ') + (dq.skusMissingCost.length > 6 ? ' …' : ''));
     }
+    if (dq.vatAssumed) out.push('KDV varsayımı bulunan kalemler var; komisyon/hizmet faturasıyla doğrulanınca ay kesinleşebilir.');
+    (dq.expenseDuplicates || []).forEach(function (r) {
+      out.push('Mükerrer adayı (dokunulmadı): ' + r.month + ' · ' + r.label + ' · ' + money(r.amount));
+    });
     $('mr-warnings').innerHTML = out.map(function (t) { return '<div class="mr-warn">' + esc(t) + '</div>'; }).join('');
   }
 
@@ -181,7 +187,7 @@
     current = v;
     var badge = $('mr-status');
     badge.hidden = false;
-    badge.textContent = v.status === 'kesin' ? 'Kesin' : 'Taslak';
+    badge.textContent = v.statusLabel || (v.status === 'kesin' ? 'Kesin' : 'Tahmini');
     badge.className = 'mr-badge ' + (v.status === 'kesin' ? 'is-final' : 'is-draft');
     $('mr-refresh').hidden = false;
     $('mr-pdf').hidden = false;

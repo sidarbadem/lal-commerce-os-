@@ -82,6 +82,7 @@ BİLİNÇLİ OLARAK KORUNAN (dürüst) TAHMİNLER:
 """
 
 import sqlite3
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -429,6 +430,18 @@ def _load_other_financial_totals(conn, start_ms, end_ms, order_scope=None):
             continue
         entry = totals[r["marketplace"]].setdefault("_komisyon_within_deduction_invoices", {"net": 0.0})
         entry["net"] += r["net_total"] or 0.0
+    reklam_rows = conn.execute("""
+        SELECT marketplace, shipment_package_id, COALESCE(SUM(debt),0)-COALESCE(SUM(credit),0) AS net_total
+        FROM other_financials
+        WHERE transaction_type='DeductionInvoices' AND lower(COALESCE(raw_transaction_type,'')) LIKE '%reklam%'
+          AND transaction_date BETWEEN ? AND ?
+        GROUP BY marketplace, shipment_package_id
+    """, (start_ms, end_ms)).fetchall()
+    for r in reklam_rows:
+        if order_scope is not None and (r["marketplace"], r["shipment_package_id"]) not in order_scope:
+            continue
+        entry = totals[r["marketplace"]].setdefault("_automatic_advertising", {"net": 0.0})
+        entry["net"] += r["net_total"] or 0.0
     return totals
 
 
@@ -547,6 +560,70 @@ def _sku_vat_rate(cost_row, side="cost"):
     return (incl - excl) / excl
 
 
+def _amount_ex_vat(amount, setting):
+    """Convert a configured gross/net amount to a VAT-exclusive basis."""
+    if amount is None:
+        return None
+    setting = setting or {"vat_included": 1, "vat_rate": 0.20}
+    rate = float(setting.get("vat_rate") or 0)
+    if setting.get("vat_included") and rate:
+        return float(amount) / (1 + rate)
+    return float(amount)
+
+
+def _vat_assumed(setting):
+    return bool(setting and setting.get("vat_rate") and setting.get("vat_included"))
+
+
+def _fixed_expense_totals(rows, expense_types, aliases, manual_setting, auto_ads):
+    """Classify legacy fixed-expense rows without changing their stored labels."""
+    auto_keys = defaultdict(list)
+    for ad in auto_ads:
+        month = datetime.fromtimestamp((ad["transaction_date"] or 0) / 1000).strftime("%Y-%m")
+        auto_day = datetime.fromtimestamp((ad["transaction_date"] or 0) / 1000).strftime("%Y-%m-%d")
+        auto_keys[(month, ad["marketplace"], round(float(ad["amount"] or 0), 2))].append(auto_day)
+    business = tax = business_vat = 0.0
+    assumed = False
+    duplicates = []
+    by_type = defaultdict(float)
+    for row in rows:
+        label = row["label"]
+        type_key = aliases.get(label)
+        rule = expense_types.get(type_key) if type_key else None
+        if rule is None:
+            rule = {"type_key": "manual_expense", "group_name": "business",
+                    "vat_included": manual_setting.get("vat_included", 1),
+                    "vat_rate": manual_setting.get("vat_rate", 0.20)}
+        marketplace = "hepsiburada" if "hepsiburada" in label.lower() else ("trendyol" if "trendyol" in label.lower() else None)
+        key = (row["month"], marketplace, round(float(row["amount"] or 0), 2))
+        manual_day_match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", row.get("note") or "")
+        auto_days = auto_keys.get(key, []) if marketplace and str(rule.get("type_key", "")).startswith("ads_") else []
+        exact_match = bool(manual_day_match and manual_day_match.group(1) in auto_days)
+        if auto_days:
+            duplicates.append({"month": row["month"], "label": label, "amount": row["amount"],
+                               "automaticDates": auto_days, "manualDate": manual_day_match.group(1) if manual_day_match else None,
+                               "exact": exact_match, "matchedAutomatic": True})
+        if exact_match:
+            continue
+        amount = float(row["amount"] or 0)
+        if rule.get("group_name") == "tax":
+            tax += amount
+            by_type[rule.get("type_key", "tax")] += amount
+            continue
+        if row.get("vat_amount") is not None:
+            net_amount = amount - float(row["vat_amount"] or 0)
+            business_vat += float(row["vat_amount"] or 0)
+        else:
+            net_amount = _amount_ex_vat(amount, rule)
+            business_vat += amount - net_amount
+            assumed = assumed or _vat_assumed(rule)
+        business += net_amount
+        by_type[rule.get("type_key", "manual_expense")] += net_amount
+    return {"business": business, "tax": tax, "vat": business_vat,
+            "assumed": assumed, "duplicates": duplicates,
+            "by_type": dict(by_type)}
+
+
 # ============================================================
 # ANA HESAPLAMA
 # ============================================================
@@ -597,6 +674,16 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
             conn, cargo_by_spid, cargo_by_order_number
         )
         barcode_sku_map = _load_barcode_sku_map(conn)
+        vat_settings = {r["setting_key"]: dict(r) for r in conn.execute("SELECT * FROM vat_settings").fetchall()}
+        expense_types = {r["type_key"]: dict(r) for r in conn.execute("SELECT * FROM expense_type_settings").fetchall()}
+        expense_aliases = {r["alias"]: r["type_key"] for r in conn.execute("SELECT alias,type_key FROM expense_type_aliases").fetchall()}
+        fixed_expenses = [dict(r) for r in conn.execute(
+            "SELECT * FROM fixed_expenses WHERE month BETWEEN ? AND ?",
+            (datetime.fromtimestamp(start_ms / 1000).strftime("%Y-%m"),
+             datetime.fromtimestamp(end_ms / 1000).strftime("%Y-%m"))).fetchall()]
+        auto_ads = [dict(r) for r in conn.execute(
+            "SELECT marketplace,transaction_date,COALESCE(debt,0)-COALESCE(credit,0) AS amount FROM other_financials WHERE transaction_type='DeductionInvoices' AND lower(COALESCE(raw_transaction_type,'')) LIKE '%reklam%' AND transaction_date BETWEEN ? AND ?",
+            (start_ms, end_ms)).fetchall()]
 
     known_keys = {(ln["marketplace"], ln["shipment_package_id"], ln["barcode"]) for ln in lines}
     if include_settlement_only:
@@ -646,11 +733,16 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
         "cargo_by_order_number": cargo_by_order_number,
         "cargo_estimate_by_group": cargo_estimate_by_group,
         "lines_per_order": lines_per_order,
+        "vat_settings": vat_settings,
+        "expense_types": expense_types,
+        "expense_aliases": expense_aliases,
+        "fixed_expenses": fixed_expenses,
+        "auto_ads": auto_ads,
     }
 
 
 def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by_order_number, lines_per_order,
-                        settlement_totals_in_range=None, cargo_estimate_by_group=None):
+                        settlement_totals_in_range=None, cargo_estimate_by_group=None, vat_settings=None):
     """Tek bir sipariş satırı için Ciro/Komisyon/KDV/Kâr hesabını yapar.
     Döner: (line_result dict, estimated: bool, missing_cost_sku: str|None,
             cargo_missing_order_number: str|None)
@@ -771,37 +863,44 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
         cargo_estimated = False
         cargo_status = "ok"
 
+    vat_settings = vat_settings or {}
+    sale_vat_setting = vat_settings.get("sale", {"vat_included": 1, "vat_rate": 0.20})
+    cost_vat_setting = vat_settings.get("cost", {"vat_included": 1, "vat_rate": 0.20})
+    commission_vat_setting = vat_settings.get("commission", {"vat_included": 1, "vat_rate": 0.20})
+    service_vat_setting = vat_settings.get("service", {"vat_included": 1, "vat_rate": 0.20})
+    cargo_vat_setting = vat_settings.get("cargo", {"vat_included": 1, "vat_rate": 0.20})
     vat_missing = cost_row is None
     gross_revenue_excl_vat = None
     cogs_excl_vat = None
     vat_on_sale = None
     vat_on_cost = None
-    if cost_row is not None:
-        sale_vat_rate = _sku_vat_rate(cost_row, "sale")
-        cost_vat_rate = _sku_vat_rate(cost_row, "cost")
-        if sale_vat_rate is not None:
-            gross_revenue_excl_vat = gross_revenue / (1 + sale_vat_rate)
-            vat_on_sale = gross_revenue - gross_revenue_excl_vat
-        else:
+    sale_vat_rate = _sku_vat_rate(cost_row, "sale") if cost_row is not None else None
+    cost_vat_rate = _sku_vat_rate(cost_row, "cost") if cost_row is not None else None
+    if sale_vat_rate is None:
+        sale_vat_rate = float(sale_vat_setting.get("vat_rate") or 0)
+        vat_missing = True
+    if cost_vat_rate is None:
+        cost_vat_rate = float(cost_vat_setting.get("vat_rate") or 0)
+        if cogs is not None:
             vat_missing = True
-        if cost_vat_rate is not None and cogs is not None:
-            cogs_excl_vat = cogs / (1 + cost_vat_rate)
-            vat_on_cost = cogs - cogs_excl_vat
-        elif cogs is not None:
-            vat_missing = True
-
-    profit = (net_hakedis - cogs - cargo_line) if (cogs is not None and cargo_line is not None) else None
+    gross_revenue_excl_vat = _amount_ex_vat(gross_revenue, {"vat_included": sale_vat_setting.get("vat_included", 1), "vat_rate": sale_vat_rate})
+    cogs_excl_vat = _amount_ex_vat(cogs, {"vat_included": cost_vat_setting.get("vat_included", 1), "vat_rate": cost_vat_rate}) if cogs is not None else None
+    vat_on_sale = gross_revenue - gross_revenue_excl_vat if gross_revenue_excl_vat is not None else None
+    vat_on_cost = cogs - cogs_excl_vat if cogs is not None and cogs_excl_vat is not None else None
+    commission_excl_vat = _amount_ex_vat(commission, commission_vat_setting)
+    service_excl_vat = _amount_ex_vat(service_fee, service_vat_setting)
+    cargo_excl_vat = _amount_ex_vat(cargo_line, cargo_vat_setting) if cargo_line is not None else None
+    profit = (gross_revenue_excl_vat - cogs_excl_vat - commission_excl_vat - service_excl_vat - cargo_excl_vat) if (cogs_excl_vat is not None and cargo_excl_vat is not None) else None
     # FAZ 1 (15.09.2026, Sidar onayıyla): GERÇEK Brüt Kâr = Ciro - SADECE COGS.
     # "profit" (yukarıda) BİLİNÇLİ OLARAK değiştirilmedi -- o hâlâ komisyon+
     # kargo sonrası "katkı kârı"nı taşıyor ve netProfit zinciri ona dayanıyor.
     # true_gross_profit ise standart muhasebe tanımına uyan, YENİ ve EKLEMELİ
     # bir alan: komisyon/kargo dahil edilmez (onlar brüt kârdan SONRA düşülen
     # operasyonel gider kalemidir, COGS değildir).
-    true_gross_profit = (gross_revenue - cogs) if (gross_revenue is not None and cogs is not None) else None
+    true_gross_profit = (gross_revenue_excl_vat - cogs_excl_vat) if (gross_revenue_excl_vat is not None and cogs_excl_vat is not None) else None
     profit_excl_vat = None
-    if cogs is not None and cargo_line is not None and gross_revenue_excl_vat is not None and cogs_excl_vat is not None:
-        net_hakedis_excl_vat = gross_revenue_excl_vat - (commission + service_fee) / (1 + (_sku_vat_rate(cost_row, "sale") or 0))
-        profit_excl_vat = net_hakedis_excl_vat - cogs_excl_vat - cargo_line
+    if profit is not None:
+        profit_excl_vat = profit
 
     # --- 21.08.2026: İade tutarı (satır bazında, tarih pencereli) + orantısal
     # COGS reversal. NOT: bu değer sadece raporlama/ekleme amaçlı — line
@@ -840,6 +939,8 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
                 cogs_reversal_note = "return_amount_exceeds_revenue_clamped"
             cogs_reversal = round(cogs * ratio, 2)
             cogs_reversal_estimated = True
+    return_amount_excl_vat = _amount_ex_vat(return_amount, {"vat_included": sale_vat_setting.get("vat_included", 1), "vat_rate": sale_vat_rate})
+    cogs_reversal_excl_vat = _amount_ex_vat(cogs_reversal, {"vat_included": cost_vat_setting.get("vat_included", 1), "vat_rate": cost_vat_rate}) if cogs_reversal is not None else None
 
     line_result = {
         "orderNumber": ln["order_number"],
@@ -849,22 +950,34 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
         "barcode": ln["barcode"],
         "productName": ln["product_name"],
         "quantity": ln["quantity"],
-        "grossRevenue": round(gross_revenue, 2) if gross_revenue is not None else None,
-        "returnAmount": round(return_amount, 2),
+        "grossRevenue": round(gross_revenue_excl_vat, 2) if gross_revenue_excl_vat is not None else None,
+        "grossRevenueInclVat": round(gross_revenue, 2) if gross_revenue is not None else None,
+        "returnAmount": round(return_amount_excl_vat, 2),
+        "returnAmountInclVat": round(return_amount, 2),
+        "returnAmountExclVat": round(return_amount_excl_vat, 2),
         # İadenin GERÇEK transaction_date'i — orderDate ile KARIŞTIRILMAMALI.
         # Grafiklerde (daily/monthly) iadenin doğru periyoda düşmesi için kullanılır.
         "returnDate": return_date,
-        "netRevenue": round(net_revenue, 2) if net_revenue is not None else None,
+        "netRevenue": round((gross_revenue_excl_vat or 0) - return_amount_excl_vat, 2) if net_revenue is not None else None,
         "revenueExclVat": round(gross_revenue_excl_vat, 2) if gross_revenue_excl_vat is not None else None,
-        "commission": round(commission, 2) if commission is not None else None,
-        "serviceFee": round(service_fee, 2) if service_fee is not None else None,
+        "commission": round(commission_excl_vat, 2) if commission_excl_vat is not None else None,
+        "commissionInclVat": round(commission, 2) if commission is not None else None,
+        "serviceFee": round(service_excl_vat, 2) if service_excl_vat is not None else None,
+        "serviceFeeInclVat": round(service_fee, 2) if service_fee is not None else None,
         "netHakedis": round(net_hakedis, 2) if net_hakedis is not None else None,
-        "cogs": round(cogs, 2) if cogs is not None else None,
+        "cogs": round(cogs_excl_vat, 2) if cogs_excl_vat is not None else None,
+        "cogsInclVat": round(cogs, 2) if cogs is not None else None,
         "cogsExclVat": round(cogs_excl_vat, 2) if cogs_excl_vat is not None else None,
-        "cogsReversal": cogs_reversal,
+        "cogsReversal": round(cogs_reversal_excl_vat, 2) if cogs_reversal_excl_vat is not None else None,
+        "cogsReversalInclVat": cogs_reversal,
+        "cogsReversalExclVat": round(cogs_reversal_excl_vat, 2) if cogs_reversal_excl_vat is not None else None,
         "cogsReversalEstimated": cogs_reversal_estimated,
         "cogsReversalNote": cogs_reversal_note,
-        "cargo": round(cargo_line, 2) if cargo_line is not None else None,
+        "cargo": round(cargo_excl_vat, 2) if cargo_excl_vat is not None else None,
+        "cargoInclVat": round(cargo_line, 2) if cargo_line is not None else None,
+        "cargoExclVat": round(cargo_excl_vat, 2) if cargo_excl_vat is not None else None,
+        "commissionExclVat": round(commission_excl_vat, 2) if commission_excl_vat is not None else None,
+        "serviceFeeExclVat": round(service_excl_vat, 2) if service_excl_vat is not None else None,
         "vatOnSale": round(vat_on_sale, 2) if vat_on_sale is not None else None,
         "vatOnCost": round(vat_on_cost, 2) if vat_on_cost is not None else None,
         "profit": round(profit, 2) if profit is not None else None,
@@ -876,6 +989,7 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
         "cargoEstimated": cargo_estimated,
         "cargoStatus": cargo_status,
         "vatMissing": vat_missing,
+        "vatAssumed": any((_vat_assumed(sale_vat_setting), _vat_assumed(cost_vat_setting), _vat_assumed(commission_vat_setting), _vat_assumed(service_vat_setting), _vat_assumed(cargo_vat_setting))) or vat_missing,
         "fromSettlementOnly": isinstance(ln, dict) and ln.get("_fromSettlementOnly", False),
         "quantityEstimated": isinstance(ln, dict) and ln.get("_quantityEstimated", False),
     }
@@ -894,22 +1008,24 @@ def _compute_overhead_by_marketplace(other_totals, return_totals, marketplaces_p
         platform_fee_raw = ot.get("DeductionInvoices", {}).get("net", 0)
         kargo_within = ot.get("_kargo_within_deduction_invoices", {}).get("net", 0)
         komisyon_within = ot.get("_komisyon_within_deduction_invoices", {}).get("net", 0)
-        platform_fee = platform_fee_raw - kargo_within - komisyon_within
+        advertising = ot.get("_automatic_advertising", {}).get("net", 0)
+        platform_fee = platform_fee_raw - kargo_within - komisyon_within - advertising
         cash_advance = ot.get("CashAdvance", {}).get("net", 0)
         return_amount = return_totals.get(mp, {}).get("total", 0)
         overhead_by_mp[mp] = {
             "stoppage": stoppage,
             "platform_fee": platform_fee,
+            "advertising": advertising,
             "cash_advance": cash_advance,
             "return_amount": return_amount,
-            "total": stoppage + platform_fee + cash_advance + return_amount,
+            "total": platform_fee + cash_advance + return_amount,
             "has_data": mp in other_totals or mp in return_totals,
         }
         payment_order_by_mp[mp] = ot.get("PaymentOrder", {}).get("debt", 0) - ot.get("PaymentOrder", {}).get("credit", 0)
     return overhead_by_mp, payment_order_by_mp
 
 
-def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals, payment_order_by_mp):
+def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals, payment_order_by_mp, vat_settings=None):
     """Satır sonuçlarını pazaryeri bazında toplayıp panelin 'by_marketplace'
     bölümü için özetler."""
     mp_stats = defaultdict(lambda: {
@@ -947,7 +1063,13 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
         # overhead'deki return_amount'tan TAMAMEN BAĞIMSIZ bir kalem (biri
         # gelir tarafını, diğeri maliyet tarafını düzeltiyor) — çift sayım
         # YOK, bkz. finance_engine.py modül docstring'i madde 6.
-        net_profit = s["gross_profit"] - mp_overhead["total"] + s["cogs_reversal_total"]
+        return_ex = sum(r.get("returnAmountExclVat") or 0 for ln0, r in zip(lines, line_results) if r["marketplace"] == mp)
+        reversal_ex = sum(r.get("cogsReversalExclVat") or 0 for ln0, r in zip(lines, line_results) if r["marketplace"] == mp)
+        cfg = vat_settings or {}
+        platform_ex = _amount_ex_vat(mp_overhead.get("platform_fee", 0), cfg.get("service"))
+        ads_ex = _amount_ex_vat(mp_overhead.get("advertising", 0), cfg.get("advertising"))
+        advance_ex = _amount_ex_vat(mp_overhead.get("cash_advance", 0), cfg.get("service"))
+        net_profit = s["gross_profit"] - (return_ex or _amount_ex_vat(mp_overhead.get("return_amount", 0), cfg.get("sale"))) + reversal_ex - platform_ex - ads_ex - advance_ex
         by_marketplace[mp] = {
             "grossRevenue": round(s["gross_revenue"], 2),
             "returnAmount": round(mp_overhead.get("return_amount", 0), 2),
@@ -959,8 +1081,10 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
             "cogsReversalTotal": round(s["cogs_reversal_total"], 2),
             "stoppage": round(mp_overhead.get("stoppage", 0), 2),
             "platformServiceFee": round(mp_overhead.get("platform_fee", 0), 2),
+            "advertising": round(mp_overhead.get("advertising", 0), 2),
+            "withholdingForOffset": round(mp_overhead.get("stoppage", 0), 2),
             "cashAdvanceCost": round(mp_overhead.get("cash_advance", 0), 2),
-            "overheadTotal": round(mp_overhead["total"], 2),
+            "overheadTotal": round(platform_ex + ads_ex + advance_ex + (_amount_ex_vat(mp_overhead.get("return_amount", 0), cfg.get("sale"))) - reversal_ex, 2),
             "netProfit": round(net_profit, 2),
             "overheadApplied": mp_overhead["has_data"],
             "returnCount": return_totals.get(mp, {}).get("count", 0),
@@ -974,7 +1098,7 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
     return by_marketplace
 
 
-def _manual_profit_inputs(start_ms, end_ms, marketplace_filter):
+def _manual_profit_inputs(start_ms, end_ms, marketplace_filter, vat_settings=None):
     """Manuel siparişleri (softhydra.com / n11 / Amazon) kâr motoruna katar.
 
     Bu siparişler API'den gelmediği için orders/order_lines tablolarında yok;
@@ -1000,6 +1124,7 @@ def _manual_profit_inputs(start_ms, end_ms, marketplace_filter):
     """
     if marketplace_filter:
         return [], []
+    vat_settings = vat_settings or {}
     ph = ",".join("?" for _ in NEVER_FULFILLED_STATUSES)
     params = (start_ms, end_ms, *NEVER_FULFILLED_STATUSES)
     try:
@@ -1041,6 +1166,10 @@ def _manual_profit_inputs(start_ms, end_ms, marketplace_filter):
             qty = i["quantity"] or 0
             cogs = round(qty * (i["unit_cost"] or 0), 2)
             sale = round(sale, 2)
+            sale_ex = _amount_ex_vat(sale, vat_settings.get("sale", {"vat_included": 1, "vat_rate": .20}))
+            cost_ex = _amount_ex_vat(cogs, vat_settings.get("cost", {"vat_included": 1, "vat_rate": .20}))
+            commission_ex = _amount_ex_vat(commission, vat_settings.get("commission", {"vat_included": 1, "vat_rate": .20}))
+            cargo_ex = _amount_ex_vat(cargo, vat_settings.get("cargo", {"vat_included": 1, "vat_rate": .20}))
             lines.append({
                 "marketplace": o["channel"], "order_number": order_number,
                 "order_date": o["order_date"], "shipment_package_id": None,
@@ -1051,17 +1180,19 @@ def _manual_profit_inputs(start_ms, end_ms, marketplace_filter):
                 "orderNumber": order_number, "orderDate": o["order_date"],
                 "marketplace": o["channel"], "sku": i["sku"], "barcode": None,
                 "productName": i["product_name"], "quantity": qty,
-                "grossRevenue": sale, "returnAmount": 0.0, "returnDate": None,
-                "netRevenue": sale, "revenueExclVat": None,
-                "commission": commission, "serviceFee": 0.0,
+                "grossRevenue": round(sale_ex, 2), "grossRevenueInclVat": sale,
+                "returnAmount": 0.0, "returnAmountInclVat": 0.0, "returnDate": None,
+                "netRevenue": round(sale_ex, 2), "revenueExclVat": round(sale_ex, 2),
+                "commission": round(commission_ex, 2), "commissionInclVat": commission,
+                "commissionExclVat": round(commission_ex, 2), "serviceFee": 0.0, "serviceFeeInclVat": 0.0, "serviceFeeExclVat": 0.0,
                 "netHakedis": round(sale - commission, 2),
-                "cogs": cogs, "cogsExclVat": None,
+                "cogs": round(cost_ex, 2), "cogsInclVat": cogs, "cogsExclVat": round(cost_ex, 2),
                 "cogsReversal": 0.0, "cogsReversalEstimated": False, "cogsReversalNote": None,
-                "cargo": cargo, "vatOnSale": None, "vatOnCost": None,
-                "profit": round(sale - cogs - commission - cargo, 2),
-                "profitExclVat": None,
-                "trueGrossProfit": round(sale - cogs, 2),
-                "estimated": False, "missingCost": False,
+                "cargo": round(cargo_ex, 2), "cargoInclVat": cargo, "cargoExclVat": round(cargo_ex, 2), "vatOnSale": round(sale-sale_ex, 2), "vatOnCost": round(cogs-cost_ex, 2),
+                "profit": round(sale_ex - cost_ex - commission_ex - cargo_ex, 2),
+                "profitExclVat": round(sale_ex - cost_ex - commission_ex - cargo_ex, 2),
+                "trueGrossProfit": round(sale_ex - cost_ex, 2),
+                "estimated": False, "missingCost": False, "vatAssumed": True,
                 "cargoMissing": False, "cargoEstimated": False, "cargoStatus": "manual",
                 "vatMissing": True, "fromSettlementOnly": False, "quantityEstimated": False,
                 "isManual": True,
@@ -1070,7 +1201,7 @@ def _manual_profit_inputs(start_ms, end_ms, marketplace_filter):
 
 
 def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_filter=None,
-                            include_settlement_only=True):
+                            include_settlement_only=True, include_period_expenses=False):
     """marketplace_filter: None -> tüm pazaryerleri (=eski 'all'),
     'trendyol' veya 'hepsiburada' -> sadece o pazaryeri.
 
@@ -1108,6 +1239,7 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             data["cargo_by_spid"], data["cargo_by_order_number"], data["lines_per_order"],
             settlement_totals_in_range=data["settlement_totals_in_range"],
             cargo_estimate_by_group=data["cargo_estimate_by_group"],
+            vat_settings=data["vat_settings"],
         )
         line_results.append(line_result)
         if estimated:
@@ -1120,7 +1252,7 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             cargo_missing_orders.add(ln["order_number"])
 
     # Manuel siparişler (softhydra.com / n11 / Amazon): bkz. _manual_profit_inputs.
-    manual_lines, manual_results = _manual_profit_inputs(start_ms, end_ms, marketplace_filter)
+    manual_lines, manual_results = _manual_profit_inputs(start_ms, end_ms, marketplace_filter, data["vat_settings"])
     if manual_lines:
         lines = list(lines) + manual_lines
         line_results.extend(manual_results)
@@ -1143,7 +1275,6 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
     total_cargo = sum(r["cargo"] or 0 for r in line_results)
     total_vat_on_sale = sum(r["vatOnSale"] for r in line_results if r["vatOnSale"] is not None)
     total_vat_on_cost = sum(r["vatOnCost"] for r in line_results if r["vatOnCost"] is not None)
-    vat_payable = total_vat_on_sale - total_vat_on_cost
 
     marketplaces_present = (set(ln["marketplace"] for ln in lines)
                              | set(data["other_totals"].keys()) | set(data["return_totals"].keys()))
@@ -1162,22 +1293,61 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
 
     # overhead_total artık İADE TUTARINI DA içeriyor (kritik düzeltme — eski
     # motorda return_total hiç düşülmüyordu, sadece raporlanıyordu).
-    overhead_total = stoppage_total + platform_fee_total + cash_advance_total + return_total
+    overhead_total = platform_fee_total + cash_advance_total + return_total
     # 21.08.2026: total_cogs_reversal AYRI ve BAĞIMSIZ bir ekleme — return_total
     # (yukarıda) SADECE gelir tarafını düzeltiyor, bu SADECE maliyet tarafını.
     # Aynı iade olayı iki kez düşülmüyor/eklenmiyor (bkz. modül docstring'i
     # madde 6 ve _aggregate_by_marketplace'teki aynı yorum).
-    net_profit = gross_profit - overhead_total + total_cogs_reversal
+    vat_cfg = data["vat_settings"]
+    commission_vat = sum((r.get("commissionInclVat") or 0) - (r.get("commission") or 0) for r in line_results)
+    service_vat = sum((r.get("serviceFeeInclVat") or 0) - (r.get("serviceFee") or 0) for r in line_results)
+    cargo_vat = sum((r.get("cargoInclVat") or 0) - (r.get("cargo") or 0) for r in line_results)
+    marketplace_service_ex = 0.0
+    automatic_advertising_ex = 0.0
+    cash_advance_ex = 0.0
+    for mp in marketplaces_present:
+        item = overhead_by_mp.get(mp, {})
+        marketplace_service_ex += _amount_ex_vat(item.get("platform_fee", 0), vat_cfg.get("service"))
+        automatic_advertising_ex += _amount_ex_vat(item.get("advertising", 0), vat_cfg.get("advertising"))
+        cash_advance_ex += _amount_ex_vat(item.get("cash_advance", 0), vat_cfg.get("service"))
+    expense_summary = _fixed_expense_totals(
+        data["fixed_expenses"] if include_period_expenses else [], data["expense_types"],
+        data["expense_aliases"], vat_cfg.get("manual_expense", {"vat_included": 1, "vat_rate": .20}),
+        data["auto_ads"] if include_period_expenses else [],
+    )
+    sales_excl_basis = max(total_gross_revenue, 0)
+    avg_sale_rate = (total_vat_on_sale / sales_excl_basis) if sales_excl_basis else float(vat_cfg.get("sale", {}).get("vat_rate", .20))
+    returned_excl = _amount_ex_vat(return_total, {"vat_included": vat_cfg.get("sale", {}).get("vat_included", 1), "vat_rate": avg_sale_rate}) if return_total else 0.0
+    reversal_excl = sum(r.get("cogsReversalExclVat") or 0 for r in line_results)
+    # Returns/reversals with no matching line still reconcile at the marketplace
+    # summary level; their VAT conversion is explicitly estimated.
+    unallocated_expenses = (marketplace_service_ex + automatic_advertising_ex + cash_advance_ex
+                            + expense_summary["business"] + returned_excl - reversal_excl)
+    overhead_total = marketplace_service_ex + automatic_advertising_ex + cash_advance_ex + returned_excl - reversal_excl
+    net_profit = gross_profit - unallocated_expenses
+    total_vat_on_cost += commission_vat + service_vat + cargo_vat
+    # Ads and service charges embedded in DeductionInvoices are converted with
+    # their configured VAT settings; manually entered expenses contribute only
+    # their configured/entered VAT amount.
+    total_vat_on_cost += (sum(item.get("advertising", 0) for item in overhead_by_mp.values())
+                          - automatic_advertising_ex) + (sum(item.get("platform_fee", 0) for item in overhead_by_mp.values())
+                          - marketplace_service_ex)
+    total_vat_on_cost += expense_summary["vat"]
+    vat_payable = total_vat_on_sale - total_vat_on_cost
     net_profit_after_vat = net_profit - vat_payable
+    net_profit_after_taxes = net_profit - expense_summary["tax"]
+    vat_assumed = bool(expense_summary["assumed"] or any(r.get("vatAssumed") for r in line_results)
+                       or ((automatic_advertising_ex or marketplace_service_ex or cash_advance_ex)
+                           and any(_vat_assumed(vat_cfg.get(k)) for k in ("advertising", "service"))))
 
     by_marketplace = _aggregate_by_marketplace(
-        lines, line_results, overhead_by_mp, data["return_totals"], payment_order_by_mp)
+        lines, line_results, overhead_by_mp, data["return_totals"], payment_order_by_mp, vat_settings=data["vat_settings"])
 
     return {
         "totals": {
             "grossRevenue": round(total_gross_revenue, 2),
             "returnAmount": round(return_total, 2),
-            "netRevenue": round(total_gross_revenue - return_total, 2),
+            "netRevenue": round(total_gross_revenue - returned_excl, 2),
             "netHakedis": round(total_net_hakedis, 2),
             "commission": round(total_commission, 2),
             "serviceFee": round(total_service_fee, 2),
@@ -1188,11 +1358,24 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             "cargoTotal": round(total_cargo, 2),
             "cogsReversalTotal": round(total_cogs_reversal, 2),
             "stoppage": round(stoppage_total, 2),
+            "withholdingForOffset": round(stoppage_total, 2),
+            "vatWithholdingNotOffset": round(expense_summary["by_type"].get("vat_withholding", 0), 2),
             "platformServiceFee": round(platform_fee_total, 2),
             "cashAdvanceCost": round(cash_advance_total, 2),
             "returnCount": return_count,
             "overheadTotal": round(overhead_total, 2),
             "netProfit": round(net_profit, 2),
+            "operatingProfit": round(net_profit, 2),
+            "realNetProfit": round(net_profit_after_taxes, 2),
+            "profitAfterTaxes": round(net_profit_after_taxes, 2),
+            "businessExpenses": round(expense_summary["business"], 2),
+            "taxesAndPremiums": round(expense_summary["tax"], 2),
+            "unallocatedExpenses": round(unallocated_expenses, 2),
+            "unallocatedVat": round(expense_summary["vat"], 2),
+            "vatAssumed": vat_assumed,
+            "vatAssumptionCount": sum(1 for r in line_results if r.get("vatAssumed")) + (1 if expense_summary["assumed"] else 0),
+            "expenseDuplicates": expense_summary["duplicates"],
+            "expenseTypeTotals": expense_summary["by_type"],
             "vatOnSales": round(total_vat_on_sale, 2),
             "vatOnPurchases": round(total_vat_on_cost, 2),
             "vatPayableEstimate": round(vat_payable, 2),
@@ -1204,6 +1387,8 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             "lines_estimated_pending_settlement": estimated_count,
             "skus_missing_cost": sorted(missing_cost_skus),
             "orders_missing_cargo_invoice": len([o for o in cargo_missing_orders if o]),
+            "vat_assumed": vat_assumed,
+            "vat_assumption_count": sum(1 for r in line_results if r.get("vatAssumed")) + (1 if expense_summary["assumed"] else 0),
         },
         "by_marketplace": by_marketplace,
         "lines": line_results,
@@ -1211,100 +1396,55 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
 
 
 def monthly_profit(start_dt, end_dt, marketplace_filter=None):
-    """Tek geçişte hesaplar (ESKİ MOTORDAN FARK: artık her ay için ayrı
-    ayrı tüm settlements tablosunu taramıyor — önce TÜM aralık için satır
-    sonuçlarını üretir, sonra Python tarafında aya göre gruplar).
-    """
-    summary = compute_profit_summary(start_dt=start_dt, end_dt=end_dt, marketplace_filter=marketplace_filter)
-
-    by_month = defaultdict(lambda: {"grossRevenue": 0.0, "netHakedis": 0.0, "grossProfit": 0.0,
-                                     "trueGrossProfit": 0.0, "missingCargoOrders": set(), "cargoOverdueOrders": set()})
-    for ln in summary["lines"]:
-        d = ln["orderDate"]
-        if not d:
-            continue
-        month_key = datetime.fromtimestamp(d / 1000).strftime("%Y-%m")
-        m = by_month[month_key]
-        m["grossRevenue"] += ln["grossRevenue"] or 0
-        m["netHakedis"] += ln["netHakedis"] or 0
-        if ln["profit"] is not None:
-            m["grossProfit"] += ln["profit"]
-        # FAZ 1 (15.09.2026): gerçek Brüt Kâr aylık kırılımı -- netProfit
-        # hesabını ETKİLEMİYOR, sadece ayrı bir alan olarak taşınıyor.
-        if ln.get("trueGrossProfit") is not None:
-            m["trueGrossProfit"] += ln["trueGrossProfit"]
-        if ln.get("cargoMissing"):
-            # B4 takibi (14.09.2026): bu ayin net kar toplami kargo faturasi
-            # eksik siparisler yuzunden SESSIZCE dusuk gorunmesin diye
-            # siparis bazinda (marketplace, orderNumber) benzersiz sayilir.
-            m["missingCargoOrders"].add((ln.get("marketplace"), ln.get("orderNumber")))
-            if ln.get("cargoStatus") == "overdue":
-                # RC3 takibi (14.09.2026): "overdue" olanlar ayrica sayiliyor,
-                # boylece normal gecikme (pending) ile kalici/anormal eksiklik
-                # (overdue) dashboard'da ayirt edilebilir. ordersMissingCargo
-                # davranisi DEGISMEDI, bu ek bir sayac.
-                m["cargoOverdueOrders"].add((ln.get("marketplace"), ln.get("orderNumber")))
-
-        # 09.09.2026 DÜZELTİLDİ (önceki hata): iade, satışın ayına DEĞİL,
-        # kendi transaction_date'inin düştüğü aya yazılmalı (bkz.
-        # test_monthly_profit_attributes_return_to_return_month_not_sale_month).
-        # ESKİ DAVRANIŞ HATALIYDI: return_amount hiç düşülmüyordu, sadece
-        # cogsReversal tek taraflı EKLENİYORDU — bu net etkiyi TERSİNE
-        # çeviriyor, iade olduğunda kâr aslında yükseliyormuş gibi
-        # görünebiliyordu. Doğrusu: o ayın cirosundan return_amount düşülür,
-        # kârından da (return_amount - cogsReversal) düşülür (cogsReversal
-        # geri kazanılan maliyet olduğu için kısmen telafi eder).
-        return_amount = ln.get("returnAmount") or 0
-        if return_amount:
-            return_date = ln.get("returnDate") or d
-            return_month_key = datetime.fromtimestamp(return_date / 1000).strftime("%Y-%m")
-            rm = by_month[return_month_key]
-            cogs_reversal = ln.get("cogsReversal") or 0
-            rm["grossRevenue"] -= return_amount
-            rm["grossProfit"] -= (return_amount - cogs_reversal)
-            # trueGrossProfit için de AYNI kural: iade edilen ciro geri
-            # alınıyor, geri kazanılan COGS (cogsReversal) kısmen telafi
-            # ediyor -- kargo/komisyon burada zaten YOK, o yüzden formül
-            # yukarıdaki grossProfit satırıyla birebir aynı.
-            rm["trueGrossProfit"] -= (return_amount - cogs_reversal)
-
-    # NOT: Bu basitleştirilmiş aylık kırılım, dönemsel giderleri (stopaj,
-    # platform hizmet bedeli, iade) SATIR TARİHİNE göre değil sipariş
-    # tarihine göre aya dağıtmaz (bkz. TODO altında ayrıntı) — aylık
-    # netProfit yaklaşık olarak grossProfit'e eşit tutulur; tam dönemsel
-    # gider dağılımı için ay bazlı ayrı sorgu gerekir (bkz. finance_engine
-    # TODO notu). Bu, eski motordaki performans sorununu çözer ama
-  # dönemsel giderlerin aya dağılımı basitleştirilmiştir; net rakam
-    # her zaman TOPLAM aralık için compute_profit_summary()'den alınmalı.
-    # Aylık sabit giderler (kira, personel, vb.) — ay bazlı olduğu için burada
-    # herhangi bir orantılama/tahmin gerekmiyor, doğrudan o aya girilen kalemlerin
-    # toplamı düşülüyor. "Gerçek Net Kâr" = Net Kâr (brüt kâr, dönemsel giderler
-    # zaten compute_profit_summary'de düşülmüş haliyle) - o ayın sabit giderleri.
-    first_month = start_dt.strftime("%Y-%m")
-    last_month = end_dt.strftime("%Y-%m")
-    fixed_expenses_by_month = get_fixed_expenses_by_month(first_month, last_month)
-
+    """Aylık paneller her ay için aynı kanonik özet motorunu kullanır."""
     months = []
     cursor = datetime(start_dt.year, start_dt.month, 1)
     while cursor <= end_dt:
         key = cursor.strftime("%Y-%m")
-        m = by_month.get(key, {"grossRevenue": 0.0, "netHakedis": 0.0, "grossProfit": 0.0,
-                               "trueGrossProfit": 0.0, "missingCargoOrders": set()})
-        net_profit = round(m["grossProfit"], 2)  # bkz. yukarıdaki not
-        fixed_expenses = round(fixed_expenses_by_month.get(key, 0.0), 2)
-        orders_missing_cargo = len(m.get("missingCargoOrders") or ())
-        orders_cargo_overdue = len(m.get("cargoOverdueOrders") or ())
+        month_start = datetime(cursor.year, cursor.month, 1)
+        if cursor.month == 12:
+            next_month = datetime(cursor.year + 1, 1, 1)
+        else:
+            next_month = datetime(cursor.year, cursor.month + 1, 1)
+        month_end = min(end_dt, next_month - timedelta(microseconds=1))
+        summary = compute_profit_summary(start_dt=month_start, end_dt=month_end,
+                                         marketplace_filter=marketplace_filter,
+                                         include_period_expenses=True)
+        t, quality = summary["totals"], summary["data_quality"]
+        orders_missing_cargo = quality.get("orders_missing_cargo_invoice", 0)
+        missing_skus = quality.get("skus_missing_cost", [])
+        assumed = bool(t.get("vatAssumed"))
+        fixed_expenses = (t.get("businessExpenses", 0) or 0) + (t.get("taxesAndPremiums", 0) or 0)
+        missing_count = orders_missing_cargo + len(missing_skus)
+        if assumed:
+            status = "Tahmini (KDV varsayımlı)"
+        elif missing_count:
+            status = f"Tahmini ({missing_count} eksik)"
+        else:
+            status = "Kesin"
         months.append({
             "month": key,
-            "revenue": round(m["grossRevenue"], 2),
-            "grossProfit": round(m["grossProfit"], 2),
-            "trueGrossProfit": round(m["trueGrossProfit"], 2),
-            "netProfit": net_profit,
-            "fixedExpenses": fixed_expenses,
-            "realNetProfit": round(net_profit - fixed_expenses, 2),
+            "revenue": t.get("grossRevenue", 0),
+            "grossProfit": t.get("grossProfit", 0),
+            "trueGrossProfit": t.get("trueGrossProfit", 0),
+            "netProfit": t.get("netProfit", 0),
+            "operatingProfit": t.get("operatingProfit", 0),
+            "realNetProfit": t.get("realNetProfit", 0),
+            "taxesAndPremiums": t.get("taxesAndPremiums", 0),
+            "businessExpenses": t.get("businessExpenses", 0),
+            "unallocatedExpenses": t.get("unallocatedExpenses", 0),
+            "fixedExpenses": round(fixed_expenses, 2),
+            "withholdingForOffset": t.get("stoppage", 0),
+            "vatWithholdingNotOffset": t.get("vatWithholdingNotOffset", 0),
+            "vatPayableEstimate": t.get("vatPayableEstimate", 0),
+            "vatAssumed": assumed,
+            "status": status,
+            "expenseDuplicates": t.get("expenseDuplicates", []),
+            "missingCount": missing_count,
             "ordersMissingCargo": orders_missing_cargo,
-            "ordersCargoOverdue": orders_cargo_overdue,
-            "incompleteData": orders_missing_cargo > 0,
+            "ordersCargoOverdue": 0,
+            "missingCostSkus": missing_skus,
+            "incompleteData": missing_count > 0 or assumed,
         })
         cursor = datetime(cursor.year + 1, 1, 1) if cursor.month == 12 else datetime(cursor.year, cursor.month + 1, 1)
     return months

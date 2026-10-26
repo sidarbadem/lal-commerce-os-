@@ -13,7 +13,9 @@ TR_MONTHS = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
 
 METRIC_KEYS = ["grossRevenue", "returnAmount", "netRevenue", "cogsTotal", "commission",
                "cargoTotal", "stoppage", "platformServiceFee", "overheadTotal", "netProfit",
-               "serviceFee", "cogsReversalTotal", "grossProfit"]
+               "serviceFee", "cogsReversalTotal", "grossProfit", "operatingProfit",
+               "realNetProfit", "businessExpenses", "taxesAndPremiums", "unallocatedExpenses",
+               "vatPayableEstimate", "withholdingForOffset", "vatWithholdingNotOffset"]
 
 
 def ensure_schema(conn):
@@ -97,7 +99,7 @@ def aggregate_products(lines):
 
 def build_report_data(period):
     start_dt, end_dt = period_range(period)
-    summary = finance_engine.compute_profit_summary(start_dt=start_dt, end_dt=end_dt)
+    summary = finance_engine.compute_profit_summary(start_dt=start_dt, end_dt=end_dt, include_period_expenses=True)
     totals = summary["totals"]
     quality = summary["data_quality"]
     lines = summary["lines"]
@@ -108,31 +110,42 @@ def build_report_data(period):
         orders.add((ln.get("marketplace"), ln.get("orderNumber")))
         units += ln.get("quantity") or 0
 
-    fixed = finance_engine.get_fixed_expenses_by_month(period, period).get(period, 0.0)
-
     metrics = {k: round(totals.get(k) or 0, 2) for k in METRIC_KEYS}
-    metrics["fixedExpenses"] = round(fixed, 2)
-    metrics["realNetProfit"] = round(metrics["netProfit"] - fixed, 2)
+    metrics["fixedExpenses"] = round(metrics["businessExpenses"] + metrics["taxesAndPremiums"], 2)
     metrics["orderCount"] = len(orders)
     metrics["unitCount"] = units
     metrics["avgBasket"] = round(metrics["grossRevenue"] / len(orders), 2) if orders else 0.0
 
     missing_cargo = quality.get("orders_missing_cargo_invoice") or 0
     estimated = quality.get("lines_estimated_pending_settlement") or 0
-    status = "kesin" if (missing_cargo == 0 and estimated == 0) else "taslak"
+    vat_assumed = bool(totals.get("vatAssumed"))
+    missing_costs = quality.get("skus_missing_cost") or []
+    status = "kesin" if (missing_cargo == 0 and estimated == 0 and not missing_costs and not vat_assumed) else "taslak"
+    status_label = ("Tahmini (KDV varsayımlı)" if vat_assumed else
+                    (f"Tahmini ({missing_cargo + len(missing_costs) + estimated} eksik)" if status != "kesin" else "Kesin"))
+    products = aggregate_products(lines)
+    unallocated = round(totals.get("unallocatedExpenses") or 0, 2)
+    if unallocated:
+        products.append({"key": "__unallocated__", "sku": None, "productName": "Dağıtılmamış",
+                         "quantity": 0, "revenue": 0.0, "profit": round(-unallocated, 2), "margin": None})
 
     return {
         "period": period,
         "label": period_label(period),
         "status": status,
+        "statusLabel": status_label,
         "metrics": metrics,
         "byMarketplace": summary.get("by_marketplace"),
         "dataQuality": {
             "ordersMissingCargo": missing_cargo,
             "linesEstimated": estimated,
             "skusMissingCost": quality.get("skus_missing_cost") or [],
+            "vatAssumed": vat_assumed,
+            "vatAssumptionCount": totals.get("vatAssumptionCount", 0),
+            "missingCount": missing_cargo + len(missing_costs),
+            "expenseDuplicates": totals.get("expenseDuplicates", []),
         },
-        "products": aggregate_products(lines),
+        "products": products,
     }
 
 

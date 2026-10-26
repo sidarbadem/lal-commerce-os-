@@ -162,28 +162,18 @@
   const LAL_CHART_FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
   const monthlyProfitTlFmt = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
 
-  // KRİTİK VERİ KURALI: panelde gösterilen "Net Kâr" HER ZAMAN
-  // finance_engine.monthly_profit()'in döndürdüğü realNetProfit alanıdır
-  // (sabit giderler dahil nihai gerçek net kâr). Eski ara `netProfit`
-  // alanına SESSİZCE düşülmez (`?? netProfit` YOK) — realNetProfit bir ay
-  // için eksikse bu, backend'de bir sorunun işaretidir ve konsola açıkça
-  // loglanır; grafikte o ay için sessizce yanlış bir "net kâr" gösterilmez.
-  // (Not: finance_engine.py monthly_profit() her ay için realNetProfit'i
-  // her zaman hesaplayıp döndürür — bkz. "realNetProfit": round(net_profit
-  // - fixed_expenses, 2) — fixed_expenses kayıt yoksa 0 varsayar, yani bu
-  // alan normal koşullarda ASLA eksik olmaz. Bu kontrol yalnızca bir
-  // güvenlik ağı.)
-  function monthlyProfitRealNet(m) {
-    if (m.realNetProfit === undefined || m.realNetProfit === null) {
+  // Net kâr, finance_engine tarafından hesaplanan faaliyet kârıdır.
+  function monthlyProfitOperating(m) {
+    if (m.netProfit === undefined || m.netProfit === null) {
       console.warn(
-        `[LAL] Finansal Performans: "${m.month}" ayı için API yanıtında realNetProfit alanı yok — ` +
+        `[LAL] Finansal Performans: "${m.month}" ayı için API yanıtında netProfit alanı yok — ` +
         `finance_engine.monthly_profit() / /api/monthly-profit kontrol edilmeli. ` +
         `Eski ara "netProfit" değeri Net Kâr olarak KULLANILMIYOR, bu ay için 0 gösteriliyor.`,
         m
       );
       return 0;
     }
-    return m.realNetProfit;
+    return m.netProfit;
   }
 
   // LAL token'larını canlı okuyan yardımcı — hard-coded hex yerine tema neyse onu döner.
@@ -386,7 +376,7 @@
     const rev = m.revenue || 0;
     // FAZ 2: tooltip'teki "Brüt Kâr" satırı da gerçek tanıma geçti.
     const gross = m.trueGrossProfit || 0;
-    const net = monthlyProfitRealNet(m);
+    const net = monthlyProfitOperating(m);
     const rows = [
       { label: 'Ciro', value: rev, color: lalToken('--lal-text-faint'), diamond: false },
       { label: 'Brüt Kâr', value: gross, color: lalToken('--lal-amber'), diamond: false },
@@ -497,7 +487,7 @@
     const rows = months.map((m, i) => {
       const rev = m.revenue || 0;
       const gross = m.trueGrossProfit || 0;
-      const net = monthlyProfitRealNet(m);
+      const net = monthlyProfitOperating(m);
       const [y, mo] = m.month.split('-');
       const label = new Date(y, mo - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
       const margin = rev ? `%${((net / rev) * 100).toFixed(1).replace('.', ',')}` : '–';
@@ -548,7 +538,7 @@
       month: m.month,
       rev: m.revenue || 0,
       gross: m.trueGrossProfit || 0,
-      net: monthlyProfitRealNet(m),
+      net: monthlyProfitOperating(m),
     }));
     window.__lalMonthlyProfit = extra;
     document.dispatchEvent(new CustomEvent('lal:monthly-profit', { detail: extra }));
@@ -643,7 +633,7 @@
       // kırılımdaki gerçek trueGrossProfit'i (Ciro - sadece COGS) besliyor
       // -- eski (komisyon+kargo dahil) m.grossProfit ARTIK KULLANILMIYOR.
       grossProfit: months.map(m => m.trueGrossProfit || 0),
-      netProfit: months.map(monthlyProfitRealNet),
+      netProfit: months.map(monthlyProfitOperating),
     };
     return { labels, dataByKey };
   }
