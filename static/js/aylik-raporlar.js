@@ -184,6 +184,7 @@
     badge.textContent = v.status === 'kesin' ? 'Kesin' : 'Taslak';
     badge.className = 'mr-badge ' + (v.status === 'kesin' ? 'is-final' : 'is-draft');
     $('mr-refresh').hidden = false;
+    $('mr-pdf').hidden = false;
     $('mr-note').textContent = v.generatedAt ? 'Son hesaplama: ' + v.generatedAt : '';
     $('mr-empty').hidden = true;
     $('mr-content').hidden = false;
@@ -236,6 +237,22 @@
       if (!res.ok) { $('mr-note').textContent = (res.body && res.body.error) || 'Hesaplama başarısız.'; return; }
       loadPeriod(period);
     }).catch(function () { btn.disabled = false; $('mr-note').textContent = 'Bağlantı hatası.'; });
+  });
+
+  var savedTitle = document.title;
+  var savedSet = null;
+  $('mr-pdf').addEventListener('click', function () { window.print(); });
+  window.addEventListener('beforeprint', function () {
+    if (!current) return;
+    savedTitle = document.title;
+    savedSet = activeSet;
+    document.title = 'LAL Aylık Rapor - ' + (current.label || current.period);
+    activeSet = 'products';
+    renderProducts();
+  });
+  window.addEventListener('afterprint', function () {
+    document.title = savedTitle;
+    if (savedSet) { activeSet = savedSet; savedSet = null; renderProducts(); }
   });
 
   $('mr-tabs').addEventListener('click', function (e) {

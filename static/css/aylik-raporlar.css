@@ -38,3 +38,18 @@
 
 #mp-switch, #range-select { display: none; }
 .mr-table tr.is-info td { opacity: 0.65; font-size: 0.92em; }
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #ambient-bg, .lal-sidebar, .lal-topbar, footer, #alerts-band, #config-warning, #error-banner, #sync-status,
+  [class*="toast"], [class*="cmdk"], [class*="notif"],
+  #mr-period, #mr-refresh, #mr-pdf, .mr-tabs { display: none !important; }
+  html, body { background: #fff !important; }
+  .lal-app, .lal-main { display: block !important; }
+  .lal-page-content { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  .panel { box-shadow: none !important; }
+  .mr-scroll { overflow: visible !important; }
+  .mr-table tr, .mr-kpi { break-inside: avoid; }
+  .mr-table thead { display: table-header-group; }
+}
