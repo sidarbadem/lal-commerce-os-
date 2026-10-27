@@ -1,6 +1,6 @@
 """LAL bildirim merkezi.
 
-Uc tur bildirim uretir: yeni siparis, yeni yorum ve net karin kesinlesmesi
+Dört tür bildirim üretir: yeni sipariş, iptal, yeni yorum ve net kârın kesinleşmesi
 (kargo faturasi gelip tahmin yerine gercek tutar kullanilan siparisler).
 Sync kodundan bagimsizdir: veritabanini tarar, daha once gorulmeyenleri
 bildirime cevirir. Ilk calistirmada mevcut her seyi sessizce gorulmus isaretler.
@@ -15,7 +15,7 @@ MAX_DETAIL_ITEMS = 200
 MP_LABELS = {"trendyol": "Trendyol", "hepsiburada": "Hepsiburada"}
 
 _ORDERS_SQL = (
-    "SELECT marketplace, shipment_package_id, order_number, net_amount FROM orders"
+    "SELECT marketplace, shipment_package_id, order_number, net_amount, status FROM orders"
 )
 _REVIEWS_SQL = (
     "SELECT marketplace, external_review_id, product_sku, star, content "
@@ -131,6 +131,48 @@ def _emit_orders(conn, rows):
     return 1
 
 
+def _is_cancelled_status(status):
+    """Only statuses that mean the order will not be fulfilled; returns are separate."""
+    value = "".join(ch for ch in str(status or "").casefold() if ch.isalnum())
+    return value in {
+        "cancelled", "canceled", "cancelledbycustomer", "cancelledbyseller",
+        "unsupplied", "iptal", "iptaledildi", "karsilanamadi",
+    }
+
+
+def _emit_cancellations(conn, rows):
+    if not rows:
+        return 0
+    if len(rows) <= MAX_INDIVIDUAL:
+        for r in rows:
+            _add(
+                conn, "order_cancelled", "Sipariş iptal edildi",
+                "%s · %s · %s" % (
+                    _mp(r["marketplace"]), r["order_number"], r["status"] or "iptal",
+                ),
+                {"orders": [{
+                    "marketplace": r["marketplace"],
+                    "order_number": r["order_number"],
+                    "status": r["status"],
+                    "net_amount": r["net_amount"],
+                }]},
+                r["marketplace"],
+            )
+        return len(rows)
+    items = [{
+        "marketplace": r["marketplace"],
+        "order_number": r["order_number"],
+        "status": r["status"],
+        "net_amount": r["net_amount"],
+    } for r in rows[:MAX_DETAIL_ITEMS]]
+    _add(
+        conn, "order_cancelled", "%d sipariş iptal edildi" % len(rows),
+        "Ayrıntılar için bildirimi açın.",
+        {"orders": items, "total": len(rows)}, None,
+    )
+    return 1
+
+
 def _review_item(r):
     return {
         "marketplace": r["marketplace"],
@@ -175,6 +217,13 @@ def _emit_final(conn, rows):
     return 1
 
 
+def _fast_not_notified(conn, r):
+    """HB siparisi hizli yoldan (hb_fast_order_tasks) bildirildiyse tekrar bildirme."""
+    if not (r["marketplace"] or "").lower().startswith("hepsi"):
+        return True
+    return _claim(conn, "order_fast", str(r["order_number"]))
+
+
 def detect_and_notify():
     with database.get_connection() as conn:
         ensure_schema(conn)
@@ -187,11 +236,37 @@ def detect_and_notify():
         new_orders = [
             r for r in conn.execute(_ORDERS_SQL).fetchall()
             if _claim(conn, "order", "%s:%s" % (r["marketplace"], r["shipment_package_id"]))
+            and _fast_not_notified(conn, r)
         ]
         new_reviews = [
             r for r in conn.execute(_REVIEWS_SQL).fetchall()
             if _claim(conn, "review", "%s:%s" % (r["marketplace"], r["external_review_id"]))
         ]
+        cancelled_rows = [
+            r for r in conn.execute(_ORDERS_SQL).fetchall()
+            if _is_cancelled_status(r["status"])
+        ]
+        cancel_baseline = conn.execute(
+            "SELECT 1 FROM notification_state WHERE name = 'order_cancelled_baseline_done'"
+        ).fetchone() is None
+        if cancel_baseline:
+            # Feature rollout must not alert on historical cancellations.
+            for r in cancelled_rows:
+                _claim(conn, "order_cancelled", "%s:%s" % (
+                    r["marketplace"], r["shipment_package_id"],
+                ))
+            conn.execute(
+                "INSERT OR IGNORE INTO notification_state (name, value) "
+                "VALUES ('order_cancelled_baseline_done', '1')"
+            )
+            new_cancellations = []
+        else:
+            new_cancellations = [
+                r for r in cancelled_rows
+                if _claim(conn, "order_cancelled", "%s:%s" % (
+                    r["marketplace"], r["shipment_package_id"],
+                ))
+            ]
         new_final = [
             r for r in conn.execute(_FINAL_SQL).fetchall()
             if _claim(conn, "profit_final", "%s:%s" % (r["marketplace"], r["shipment_package_id"]))
@@ -206,12 +281,14 @@ def detect_and_notify():
                 "baseline": True,
                 "orders": len(new_orders),
                 "reviews": len(new_reviews),
+                "order_cancelled": len(new_cancellations),
                 "profit_final": len(new_final),
             }
 
         created = (
             _emit_orders(conn, new_orders)
             + _emit_reviews(conn, new_reviews)
+            + _emit_cancellations(conn, new_cancellations)
             + _emit_final(conn, new_final)
         )
         conn.execute(

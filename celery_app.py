@@ -48,7 +48,7 @@ celery_app = Celery(
     # örneklemle manuel doğrulama yapılmadan periyodik çalıştırmak riskli.
     # qna_sync_tasks: 29.08.2026 eklendi -- AYNI kural, Beat'e otomatik
     # eklenmedi (bkz. qna_sync_tasks.py docstring'i).
-    include=["tasks", "payout_scrape_tasks", "hb_review_sync_tasks", "qna_sync_tasks", "notification_tasks", "report_tasks"],
+    include=["tasks", "payout_scrape_tasks", "hb_review_sync_tasks", "qna_sync_tasks", "notification_tasks", "report_tasks", "hb_auto_prepare_tasks", "hb_fast_order_tasks"],
 )
 
 celery_app.conf.update(
@@ -134,6 +134,14 @@ celery_app.conf.beat_schedule = {
     "notification-detect": {
         "task": "notification_tasks.detect_notifications",
         "schedule": 60 * 5,  # her 5 dakikada bir
+    },
+    "hb-auto-prepare": {
+        "task": "hb_auto_prepare_tasks.prepare_new_hepsiburada_orders",
+        "schedule": 60 * 5,  # yeni siparişleri 5 dakikada bir kontrol eder
+    },
+    "hb-fast-order-notify": {
+        "task": "hb_fast_order_tasks.notify_new_hepsiburada_orders",
+        "schedule": 60 * 2,  # HB yeni siparisi API'den 2 dk icinde bildirir
     },
     "monthly-report-generate": {
         "task": "report_tasks.generate_previous_month_report",
