@@ -304,6 +304,21 @@ def _load_barcode_sku_map(conn):
     return mapping
 
 
+def _load_all_order_line_keys(conn):
+    """Tarih sınırsız: order_lines'ta karşılığı olan (pazaryeri, paket, barkod)
+    anahtarları. Aylık görünümde bu siparişler SİPARİŞ AYINDA zaten sayıldığı
+    için, hakedişin düştüğü ayda ikinci kez sentetik satır üretilmemeli."""
+    placeholders = ",".join("?" for _ in NEVER_FULFILLED_STATUSES)
+    rows = conn.execute(f"""
+        SELECT ol.marketplace, ol.shipment_package_id, ol.barcode
+        FROM order_lines ol
+        JOIN orders o ON o.shipment_package_id = ol.shipment_package_id
+                      AND o.marketplace = ol.marketplace
+        WHERE (o.status IS NULL OR o.status NOT IN ({placeholders}))
+    """, tuple(NEVER_FULFILLED_STATUSES)).fetchall()
+    return {(r["marketplace"], r["shipment_package_id"], r["barcode"]) for r in rows}
+
+
 def _build_settlement_only_lines(settlement_totals_in_range, known_keys, barcode_sku_map):
     """order_lines'da karşılığı olmayan settlement kayıtları için sentetik satır.
 
@@ -763,7 +778,8 @@ def _fixed_expense_totals(rows, expense_types, aliases, manual_setting, auto_ads
 # ANA HESAPLAMA
 # ============================================================
 
-def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlement_only=True):
+def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlement_only=True,
+                           skip_known_order_settlements=False):
     """DB'den bir kâr/zarar özeti için gereken TÜM ham veriyi tek bağlantı
     içinde okur ve (satırlar + yardımcı haritalar) olarak döner.
 
@@ -793,6 +809,9 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
         lines = list(_load_lines(conn, start_ms, end_ms))
         if marketplace_filter:
             lines = [ln for ln in lines if ln["marketplace"] == marketplace_filter]
+        # 02.11.2026: aylık görünümde siparişi order_lines'ta olan hakedişler için
+        # sentetik satır üretilmez (sipariş kendi ayında zaten sayılıyor).
+        all_order_keys = _load_all_order_line_keys(conn) if skip_known_order_settlements else set()
 
         settlement_totals_all = _load_settlement_lines(conn)
         settlement_totals_in_range = _load_settlement_lines(conn, start_ms, end_ms)
@@ -844,7 +863,7 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
 
     known_keys = {(ln["marketplace"], ln["shipment_package_id"], ln["barcode"]) for ln in lines}
     if include_settlement_only:
-        settlement_only_lines = _build_settlement_only_lines(settlement_totals_in_range, known_keys, barcode_sku_map)
+        settlement_only_lines = _build_settlement_only_lines(settlement_totals_in_range, known_keys | all_order_keys, barcode_sku_map)
         if marketplace_filter:
             settlement_only_lines = [ln for ln in settlement_only_lines if ln["marketplace"] == marketplace_filter]
         settlement_only_by_key = {
@@ -1417,7 +1436,8 @@ def _manual_profit_inputs(start_ms, end_ms, marketplace_filter, vat_settings=Non
 
 
 def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_filter=None,
-                            include_settlement_only=True, include_period_expenses=False):
+                            include_settlement_only=True, include_period_expenses=False,
+                            skip_known_order_settlements=False):
     """marketplace_filter: None -> tüm pazaryerleri (=eski 'all'),
     'trendyol' veya 'hepsiburada' -> sadece o pazaryeri.
 
@@ -1440,7 +1460,8 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
     """
     start_ms, end_ms = _resolve_range(days, start_dt, end_dt)
     data = _gather_summary_inputs(start_ms, end_ms, marketplace_filter,
-                                   include_settlement_only=include_settlement_only)
+                                   include_settlement_only=include_settlement_only,
+                                   skip_known_order_settlements=skip_known_order_settlements)
     lines = data["lines"]
 
     line_results = []
@@ -1632,7 +1653,8 @@ def monthly_profit(start_dt, end_dt, marketplace_filter=None):
         month_end = min(end_dt, next_month - timedelta(microseconds=1))
         summary = compute_profit_summary(start_dt=month_start, end_dt=month_end,
                                          marketplace_filter=marketplace_filter,
-                                         include_period_expenses=True)
+                                         include_period_expenses=True,
+                                         skip_known_order_settlements=True)
         t, quality = summary["totals"], summary["data_quality"]
         orders_missing_cargo = quality.get("orders_missing_cargo_invoice", 0)
         missing_skus = quality.get("skus_missing_cost", [])

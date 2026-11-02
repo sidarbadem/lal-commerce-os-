@@ -162,18 +162,18 @@
   const LAL_CHART_FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
   const monthlyProfitTlFmt = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
 
-  // Net kâr, finance_engine tarafından hesaplanan faaliyet kârıdır.
-  function monthlyProfitOperating(m) {
-    if (m.netProfit === undefined || m.netProfit === null) {
+  // Net kâr = GERÇEK net kâr (realNetProfit): vergi, prim ve tüm giderler düşülmüş nihai rakam.
+  function monthlyProfitRealNet(m) {
+    if (m.realNetProfit === undefined || m.realNetProfit === null) {
       console.warn(
-        `[LAL] Finansal Performans: "${m.month}" ayı için API yanıtında netProfit alanı yok — ` +
+        `[LAL] Finansal Performans: "${m.month}" ayı için API yanıtında realNetProfit alanı yok — ` +
         `finance_engine.monthly_profit() / /api/monthly-profit kontrol edilmeli. ` +
-        `Eski ara "netProfit" değeri Net Kâr olarak KULLANILMIYOR, bu ay için 0 gösteriliyor.`,
+        `Faaliyet kârı (netProfit) Net Kâr olarak KULLANILMIYOR, bu ay için 0 gösteriliyor.`,
         m
       );
       return 0;
     }
-    return m.netProfit;
+    return m.realNetProfit;
   }
 
   // LAL token'larını canlı okuyan yardımcı — hard-coded hex yerine tema neyse onu döner.
@@ -376,7 +376,7 @@
     const rev = m.revenue || 0;
     // FAZ 2: tooltip'teki "Brüt Kâr" satırı da gerçek tanıma geçti.
     const gross = m.trueGrossProfit || 0;
-    const net = monthlyProfitOperating(m);
+    const net = monthlyProfitRealNet(m);
     const rows = [
       { label: 'Ciro', value: rev, color: lalToken('--lal-text-faint'), diamond: false },
       { label: 'Brüt Kâr', value: gross, color: lalToken('--lal-amber'), diamond: false },
@@ -487,7 +487,7 @@
     const rows = months.map((m, i) => {
       const rev = m.revenue || 0;
       const gross = m.trueGrossProfit || 0;
-      const net = monthlyProfitOperating(m);
+      const net = monthlyProfitRealNet(m);
       const [y, mo] = m.month.split('-');
       const label = new Date(y, mo - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
       const margin = rev ? `%${((net / rev) * 100).toFixed(1).replace('.', ',')}` : '–';
@@ -538,7 +538,7 @@
       month: m.month,
       rev: m.revenue || 0,
       gross: m.trueGrossProfit || 0,
-      net: monthlyProfitOperating(m),
+      net: monthlyProfitRealNet(m),
     }));
     window.__lalMonthlyProfit = extra;
     document.dispatchEvent(new CustomEvent('lal:monthly-profit', { detail: extra }));
@@ -633,7 +633,7 @@
       // kırılımdaki gerçek trueGrossProfit'i (Ciro - sadece COGS) besliyor
       // -- eski (komisyon+kargo dahil) m.grossProfit ARTIK KULLANILMIYOR.
       grossProfit: months.map(m => m.trueGrossProfit || 0),
-      netProfit: months.map(monthlyProfitOperating),
+      netProfit: months.map(monthlyProfitRealNet),
     };
     return { labels, dataByKey };
   }

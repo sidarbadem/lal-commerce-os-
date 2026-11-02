@@ -1915,3 +1915,40 @@ def test_missing_cargo_multi_sku_order_splits_summed_sku_averages_equally(db):
 
 
 
+
+
+def test_monthly_profit_order_counted_in_order_month_not_settlement_month(db):
+    """02.11.2026 regresyonu: Ekim'de verilen sipariş, hakedişi Kasım'da
+    işlense bile aylık görünümde SADECE Ekim'de sayılmalı. Eskiden Kasım'da
+    hakediş satırından üretilen sentetik satır yüzünden ikinci kez sayılıyordu."""
+    order_ms = int(datetime(2026, 10, 30, 16, 41).timestamp() * 1000)
+    settle_ms = int(datetime(2026, 11, 2, 10, 0).timestamp() * 1000)
+    _setup_line(910, "SKU-LATE", 1, 700.0, 300.0, order_ms, "ONLATE1")
+    upsert_settlements([
+        _settlement_row(id="late-sale", barcode="SKU-LATE", shipment_package_id=910,
+                         raw_transaction_type="Satış", credit=700.0, commission_amount=70.0,
+                         seller_revenue=630.0, order_number="ONLATE1", transaction_date=settle_ms),
+    ])
+
+    months = fe.monthly_profit(start_dt=datetime(2026, 10, 1), end_dt=datetime(2026, 11, 30),
+                                marketplace_filter="trendyol")
+    by_month = {m["month"]: m for m in months}
+
+    assert by_month["2026-10"]["revenue"] == pytest.approx(round(700 / 1.2, 2))
+    assert by_month["2026-11"]["revenue"] == pytest.approx(0.0)
+
+
+def test_monthly_profit_orphan_settlement_still_counted_in_settlement_month(db):
+    """Siparişi order_lines'ta HİÇ olmayan hakediş (yetim), düştüğü ayda
+    sayılmaya devam etmeli — düzeltme sadece siparişi bilinen satırları kapsar."""
+    settle_ms = int(datetime(2026, 11, 2, 10, 0).timestamp() * 1000)
+    upsert_settlements([
+        _settlement_row(id="orphan-sale", barcode="SKU-ORPHAN", shipment_package_id=9911,
+                         raw_transaction_type="Satış", credit=500.0, commission_amount=50.0,
+                         seller_revenue=450.0, order_number="ONORPH1", transaction_date=settle_ms),
+    ])
+
+    months = fe.monthly_profit(start_dt=datetime(2026, 11, 1), end_dt=datetime(2026, 11, 30),
+                                marketplace_filter="trendyol")
+    by_month = {m["month"]: m for m in months}
+    assert by_month["2026-11"]["revenue"] > 0
