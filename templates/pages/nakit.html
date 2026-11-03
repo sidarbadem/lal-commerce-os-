@@ -41,6 +41,31 @@
       <p class="panel-note lal-mt-3"><span class="nk-est-swatch"></span> <em>tahmini</em> kalemler (gecikme ortalaması, gelecek satış, reklam/kargo kesintisi, ekstrelenmemiş harcama). Satıra dokun, kalemler açılsın. Kırmızı satır: bakiye minimum nakit rezervinin altında.</p>
       <details class="lal-mt-3 nk-inputs"><summary>Tahmin girdileri</summary><div id="nk-inputs"></div></details>
     </div>
+
+    <div class="panel">
+      <h2>Pazaryeri gelecek ödemeleri</h2>
+      <p class="panel-note">Satıcı panelindeki "gelecek ödemeler" listesi. Girilen kayıtlar <strong>kesin</strong> sayılır; o pazaryerinin listedeki son güne kadarki hakediş tahminleri ve gecikme tahminleri iki kez sayılmaz. Tutarlar panelde kesintiler düşülmüş olarak görünür (Trendyol: listedeki günlere reklam/kargo kesinti tahmini eklenmez).</p>
+      <p class="panel-note" id="nk-scrape-status"></p>
+      <div class="lal-field-row lal-mb-4">
+        <div class="lal-field"><label for="nk-po-mp">Pazaryeri</label><select id="nk-po-mp"><option value="hepsiburada">Hepsiburada</option><option value="trendyol">Trendyol</option></select></div>
+        <div class="lal-field"><label for="nk-po-date">Tarih</label><input type="date" id="nk-po-date"></div>
+        <div class="lal-field"><label for="nk-po-amount">Tutar</label><input type="number" id="nk-po-amount" step="0.01" min="0"></div>
+        <button class="lal-btn lal-btn-primary" id="nk-po-add">Ekle</button>
+      </div>
+      <div class="table-scroll"><table class="nk-table">
+        <thead><tr><th>Pazaryeri</th><th>Tarih</th><th>Tutar</th><th>Kaynak</th><th></th></tr></thead>
+        <tbody id="nk-po-list"></tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <h2>HB mutabakatı: ödendiği görünmeyen hakedişler</h2>
+      <p class="panel-note">Hepsiburada ödeme tarihi bildirmediği için gecikme ortalamasıyla tahmin edilen ve tahmini günü geçmiş satırlar. Nakit akışına katılmaz; HB panelinin "Geçmiş ödemeler" ekranıyla karşılaştırın.</p>
+      <div class="table-scroll"><table class="nk-table">
+        <thead><tr><th>Tahmini ödeme günü</th><th>İşlem dönemi</th><th>Sipariş</th><th>Satır</th><th>Tutar</th></tr></thead>
+        <tbody id="nk-hb-overdue"></tbody>
+      </table></div>
+    </div>
   </div>
 
   <!-- HESAPLAR -->
@@ -112,6 +137,7 @@
         <div class="lal-field"><label for="nk-sp-date">İlk tarih</label><input type="date" id="nk-sp-date"></div>
         <div class="lal-field"><label for="nk-sp-rep">Tekrar</label><select id="nk-sp-rep"><option value="yok">Yok</option><option value="aylik">Aylık</option></select></div>
         <div class="lal-field"><label for="nk-sp-end">Bitiş (ops.)</label><input type="date" id="nk-sp-end"></div>
+        <label class="nk-toggle"><input type="checkbox" id="nk-sp-pending"> Tutar bekleniyor</label>
         <button class="lal-btn lal-btn-primary" id="nk-sp-add">Ekle</button>
       </div>
     </div>

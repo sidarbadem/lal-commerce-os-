@@ -42,12 +42,12 @@
       <tr class="nk-week${w.rezervAlti ? ' is-below' : ''}" data-w="${w.hafta}">
         <td>${w.hafta}. hafta<small>${dTR(w.baslangic)} – ${dTR(w.bitis)}</small></td>
         <td>${tl2(w.giris)}${w.girisTahmini ? `<small class="nk-est">${tl2(w.girisTahmini)} tahmini</small>` : ''}</td>
-        <td>${tl2(w.cikis)}${w.cikisTahmini ? `<small class="nk-est">${tl2(w.cikisTahmini)} tahmini</small>` : ''}</td>
+        <td>${tl2(w.cikis)}${w.cikisTahmini ? `<small class="nk-est">${tl2(w.cikisTahmini)} tahmini</small>` : ''}${(w.tutariBekleyen || []).length ? `<small>+ ${w.tutariBekleyen.map(esc).join(', ')}: tutar bekleniyor</small>` : ''}</td>
         <td>${tl2(w.net)}</td>
         <td class="nk-bal">${tl2(w.bakiye)}</td>
       </tr>
       <tr class="nk-detail" data-d="${w.hafta}" hidden><td colspan="5"><ul>${w.kalemler.map(i => `
-        <li class="${i.tahmini ? 'is-est' : ''}">${dTR(i.tarih)} · ${i.yon === 'giris' ? '+' : '−'}${tl2(i.tutar)} · ${esc(i.kalem)}${i.tahmini ? '<span class="nk-tag">tahmini</span>' : ''}${i.aciklama ? ` <small>${esc(i.aciklama)}</small>` : ''}</li>`).join('') || '<li>Kalem yok</li>'}</ul></td></tr>`).join('');
+        <li class="${i.tahmini ? 'is-est' : ''}${i.bekleniyor ? ' is-pending' : ''}">${dTR(i.tarih)} · ${i.bekleniyor ? 'tutar bekleniyor' : (i.yon === 'giris' ? '+' : '−') + tl2(i.tutar)} · ${esc(i.kalem)}${i.tahmini ? '<span class="nk-tag">tahmini</span>' : ''}${i.bekleniyor ? '<span class="nk-tag nk-tag-pending">toplama dahil değil</span>' : ''}${i.aciklama ? ` <small>${esc(i.aciklama)}</small>` : ''}</li>`).join('') || '<li>Kalem yok</li>'}</ul></td></tr>`).join('');
     body.querySelectorAll('tr.nk-week').forEach(tr => tr.addEventListener('click', () => {
       const d = body.querySelector(`tr[data-d="${tr.dataset.w}"]`); d.hidden = !d.hidden;
     }));
@@ -60,6 +60,8 @@
       <dt>Watalina maliyet / satış</dt><dd>${pct(g.cogsRatio)} (son 3 ay, KDV dahil)</dd>
       <dt>TY reklam kesintisi</dt><dd>${tl2((g.tyAdsDaily || 0) * 7)} / hafta</dd>
       <dt>TY kargo/platform kesintisi</dt><dd>${tl2((g.tyOtherDeductionsDaily || 0) * 7)} / hafta</dd>
+      <dt>HB reklam bakiyesi</dt><dd>${tl2(g.hbAdsWeekly)} / hafta (son 3 ay ortalaması)</dd>
+      <dt>Panel ödeme listesi</dt><dd>${Object.entries(f.panelOdemeSonTarihi || {}).map(([k, v]) => `${k}: ${dTR(v)}'e kadar`).join(' · ') || '—'}</dd>
       <dt>Gecikmiş tahmini (dahil değil)</dt><dd>${tl2(f.gecikmisTahminiHaricTutulan)}</dd></dl>`;
   }
   $('nk-only-certain').addEventListener('change', loadForecast);
@@ -176,15 +178,23 @@
     const d = await api('/api/nakit/planli');
     $('nk-scheduled').innerHTML = d.items.map(p => {
       const next = p.siradakiler[0];
-      return `<tr><td class="nk-wrap"><strong>${esc(p.aciklama)}</strong></td><td>${catLabel[p.kategori] || p.kategori}</td><td>${tl2(p.tutar)}</td>
+      const amountCell = p.tutar_bekleniyor
+        ? (next && next.tutar !== null ? tl2(next.tutar) + '<small>bu taksit</small>' : '<span class="nk-tag nk-tag-pending">bekleniyor</span>')
+        : tl2(p.tutar);
+      return `<tr><td class="nk-wrap"><strong>${esc(p.aciklama)}</strong></td><td>${catLabel[p.kategori] || p.kategori}</td><td>${amountCell}</td>
         <td>${p.tekrar === 'aylik' ? (p.ay_sonu ? 'Aylık, ay sonu' : `Aylık, ${Number(p.baslangic_tarihi.slice(8, 10))}'i`) : 'Tek sefer'}${p.bitis_tarihi ? `<small>bitiş ${dTR(p.bitis_tarihi)}</small>` : ''}</td>
         <td>${next ? dTR(next.tarih) + (next.tarih !== next.plan ? `<small>planlanan ${dTR(next.plan)}</small>` : '') : '—'}</td>
         <td class="nk-wrap"><small>${esc(p.notlar || '')}</small></td>
-        <td>${next ? `<div class="nk-inline"><button class="lal-btn" data-paid="${p.id}" data-plan="${next.plan}">Ödendi</button><input type="date" data-post="${p.id}"><button class="lal-btn" data-post-save="${p.id}" data-plan="${next.plan}">Ertele</button></div>` : ''}</td></tr>`;
+        <td>${next ? `<div class="nk-inline">${p.tutar_bekleniyor ? `<input type="number" step="0.01" placeholder="${dTR(next.plan)} tutarı" data-amt="${p.id}"><button class="lal-btn" data-amt-save="${p.id}" data-plan="${next.plan}">Tutarı kaydet</button>` : ''}<button class="lal-btn" data-paid="${p.id}" data-plan="${next.plan}">Ödendi</button><input type="date" data-post="${p.id}"><button class="lal-btn" data-post-save="${p.id}" data-plan="${next.plan}">Ertele</button></div>` : ''}</td></tr>`;
     }).join('') || '<tr><td colspan="7">Planlı ödeme yok.</td></tr>';
     const box = $('nk-scheduled');
     box.querySelectorAll('[data-paid]').forEach(b => b.addEventListener('click', async () => {
       try { await api(`/api/nakit/planli/${b.dataset.paid}/olay`, { plan_tarihi: b.dataset.plan, durum: 'odendi' }); msg('Ödendi işaretlendi'); loadScheduled(); loadForecast(); }
+      catch (e) { msg(e.message, true); }
+    }));
+    box.querySelectorAll('[data-amt-save]').forEach(b => b.addEventListener('click', async () => {
+      const v = box.querySelector(`[data-amt="${b.dataset.amtSave}"]`).value;
+      try { await api(`/api/nakit/planli/${b.dataset.amtSave}/tutar`, { plan_tarihi: b.dataset.plan, tutar: Number(v) }); msg('Tutar kaydedildi'); loadScheduled(); loadForecast(); }
       catch (e) { msg(e.message, true); }
     }));
     box.querySelectorAll('[data-post-save]').forEach(b => b.addEventListener('click', async () => {
@@ -195,10 +205,37 @@
   }
   $('nk-sp-add').addEventListener('click', async () => {
     try {
-      await api('/api/nakit/planli', { aciklama: $('nk-sp-desc').value, kategori: $('nk-sp-cat').value, tutar: Number($('nk-sp-amount').value), baslangic_tarihi: $('nk-sp-date').value, tekrar: $('nk-sp-rep').value, bitis_tarihi: $('nk-sp-end').value || null });
+      await api('/api/nakit/planli', { aciklama: $('nk-sp-desc').value, kategori: $('nk-sp-cat').value, tutar: Number($('nk-sp-amount').value), baslangic_tarihi: $('nk-sp-date').value, tekrar: $('nk-sp-rep').value, bitis_tarihi: $('nk-sp-end').value || null, tutar_bekleniyor: $('nk-sp-pending').checked });
       msg('Planlı ödeme eklendi'); loadScheduled(); loadForecast();
     } catch (e) { msg(e.message, true); }
   });
 
-  loadForecast(); loadAccounts(); loadReserve(); loadCards(); loadSupplier(); loadScheduled();
+  // ---------------- pazaryeri gelecek ödemeleri + HB mutabakatı
+  const mpName = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada' };
+  async function loadPayouts() {
+    const d = await api('/api/nakit/pazaryeri-odemeleri');
+    const st = d.durum || {};
+    $('nk-scrape-status').textContent = 'Otomatik çekim: ' + (Object.values(st).map(s => `${mpName[s.marketplace] || s.marketplace} ${s.ok ? 'çalışıyor' : 'çalışmıyor'}${s.last_attempt_at ? ' (son deneme ' + s.last_attempt_at.slice(0, 10) + ')' : ''}`).join(' · ') || 'hiç denenmedi');
+    const today = new Date().toISOString().slice(0, 10);
+    $('nk-po-list').innerHTML = d.items.filter(e => e.tarih >= today).map(e => `<tr><td>${mpName[e.marketplace] || e.marketplace}</td><td>${dTR(e.tarih)}</td><td>${tl2(e.amount)}</td><td>${e.kaynak}</td>
+      <td><button class="lal-btn" data-po-del="${e.marketplace}|${e.region_code}|${e.payment_date}">Sil</button></td></tr>`).join('') || '<tr><td colspan="5">Kayıt yok.</td></tr>';
+    $('nk-po-list').querySelectorAll('[data-po-del]').forEach(b => b.addEventListener('click', async () => {
+      const [marketplace, region_code, payment_date] = b.dataset.poDel.split('|');
+      try { await api('/api/nakit/pazaryeri-odemeleri/sil', { marketplace, region_code, payment_date: Number(payment_date) }); loadPayouts(); loadForecast(); }
+      catch (e) { msg(e.message, true); }
+    }));
+  }
+  $('nk-po-add').addEventListener('click', async () => {
+    try {
+      await api('/api/nakit/pazaryeri-odemeleri', { marketplace: $('nk-po-mp').value, tarih: $('nk-po-date').value, tutar: Number($('nk-po-amount').value) });
+      msg('Ödeme eklendi'); $('nk-po-amount').value = ''; loadPayouts(); loadForecast();
+    } catch (e) { msg(e.message, true); }
+  });
+  async function loadHbOverdue() {
+    const d = await api('/api/nakit/hb-gecikmis');
+    $('nk-hb-overdue').innerHTML = d.items.map(i => `<tr><td>${dTR(i.tahminiOdeme)}</td><td>${dTR(i.islemDonemi[0])} – ${dTR(i.islemDonemi[1])}</td><td>${i.siparis}</td><td>${i.satir}</td><td>${tl2(i.tutar)}</td></tr>`).join('')
+      + `<tr><td colspan="4"><strong>Toplam</strong></td><td><strong>${tl2(d.toplam)}</strong></td></tr>`;
+  }
+
+  loadForecast(); loadAccounts(); loadReserve(); loadCards(); loadSupplier(); loadScheduled(); loadPayouts(); loadHbOverdue();
 })();

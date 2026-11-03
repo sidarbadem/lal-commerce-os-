@@ -28,3 +28,5 @@
 .nk-card-meter.is-warn i { background: var(--lal-red); }
 .nk-inline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .nk-inline input { width: 9em; }
+.nk-tag-pending { background: var(--lal-surface-2); color: var(--lal-text-muted); border: 1px dashed var(--lal-border-soft); }
+.nk-detail li.is-pending { color: var(--lal-text-muted); font-style: italic; }
