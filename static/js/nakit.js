@@ -2,7 +2,7 @@
 // supplier_routes.py (/api/tedarikciler/<id>/...). shell.js'teki fmtTL / esc kullanılır.
 (function () {
   const WATALINA_ID = 4;
-  const tl2 = (n) => (n === null || n === undefined) ? '—' : '₺' + Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const tl2 = (n) => (n === null || n === undefined) ? '—' : (Number(n) < 0 ? '−₺' : '₺') + Math.abs(Number(n)).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const dTR = (iso) => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '—';
   const pct = (r) => r === null || r === undefined ? '—' : '%' + (r * 100).toFixed(1).replace('.', ',');
   const $ = (id) => document.getElementById(id);
