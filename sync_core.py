@@ -39,7 +39,7 @@ from database import (
     upsert_other_financials,
     upsert_settlements,
 )
-from finance_engine import compute_profit_summary
+from finance_engine import NEVER_FULFILLED_STATUSES, compute_profit_summary
 from finance_engine import monthly_profit as compute_monthly_profit
 from trendyol_finance import reconcile_cargo_costs, sync_finance_data
 from sync_lock import acquire_sync_lock, release_sync_lock
@@ -1198,6 +1198,12 @@ def _json_dump_safe(obj):
 # haftada bir) "Tüm Zamanlar" ile tam senkron yapılması önerilir.
 _ORDERS_INCREMENTAL_OVERLAP_DAYS = 14
 _FINANCE_INCREMENTAL_OVERLAP_DAYS = 3
+# 02.11.2026: HB /transactions sorgusu OrderDate ile filtreleniyor (işlem
+# tarihiyle değil). Satış/komisyon kaydı TESLİMATTA oluştuğu için, zamanlanmış
+# senkronun dar penceresi (20 dk'lık: 2 gün, gece: 7 gün) teslimatı geç olan
+# siparişlerin satış kaydını hiç çekmiyordu. Tam (incremental olmayan)
+# senkronlarda finans en az bu kadar geriye taranır (teslimat + iade süresi).
+_HB_FINANCE_LOOKBACK_DAYS = 45
 
 
 def _is_incremental_eligible(args):
@@ -1236,6 +1242,109 @@ def _incremental_start(requested_start, state_key, overlap_days):
     candidate = last - timedelta(days=overlap_days)
     return max(requested_start, candidate)
 
+# ---- 02.11.2026: HB sipariş durumu tazeleme ----
+# GEREKÇE: HB senkronu yalnızca open/shipped/delivered listelerini çekiyor ve
+# DB'de bilinen siparişleri atlıyor (_known_hb_order_numbers). İptal edilen
+# (CancelledByCustomer) veya iade talebi açılan (ClaimCreated) paketler bu
+# listelerden düşünce durumları HİÇ güncellenmiyordu: iptal siparişler kâra
+# satış olarak giriyor, haftalardır "InTransit" duruyordu.
+_HB_STATUS_TERMINAL = NEVER_FULFILLED_STATUSES
+_HB_STATUS_REFRESH_WINDOW_DAYS = 60
+_HB_STATUS_REFRESH_INTERVAL_HOURS = 3
+_HB_STATUS_REFRESH_STATE_KEY = "hb_status_last_refresh"
+
+
+def _resolve_hb_package_status(statuses):
+    """Bir paketteki kalem durumlarından paket durumunu seçer: kalemlerin
+    TAMAMI iptalse iptal; aksi halde ilk iptal olmayan durum (kısmi iptalde
+    paket hâlâ satıştır)."""
+    statuses = [s for s in statuses if s]
+    if not statuses:
+        return None
+    live = [s for s in statuses if s not in NEVER_FULFILLED_STATUSES]
+    return live[0] if live else statuses[0]
+
+
+def _hb_status_updates_from_detail(db_rows, detail):
+    """db_rows: aynı order_number'a ait [(shipment_package_id, status)].
+    detail: /orders/.../ordernumber/{n} yanıtı. Döner: [(new_status, spid)]
+    — yalnızca DEĞİŞENLER. Placeholder (paketlenmemiş, negatif id) satırlar
+    için paket eşleşmesi yoksa siparişin tüm kalemlerine bakılır."""
+    items = (detail or {}).get("items") or []
+    if not items:
+        return []
+    by_pkg = defaultdict(list)
+    for it in items:
+        by_pkg[str(it.get("packageNumber") or "")].append(it.get("status"))
+    all_statuses = [it.get("status") for it in items]
+
+    updates = []
+    for spid, old_status in db_rows:
+        statuses = by_pkg.get(str(spid)) or all_statuses
+        new_status = _resolve_hb_package_status(statuses)
+        if new_status and new_status != old_status:
+            updates.append((new_status, spid))
+    return updates
+
+
+def refresh_hb_order_statuses(force=False, window_days=_HB_STATUS_REFRESH_WINDOW_DAYS, progress_cb=None):
+    """Son window_days içindeki, kesinleşmemiş durumlu HB siparişlerinin
+    durumunu sipariş detay API'sinden tazeler (orders.status). En fazla
+    _HB_STATUS_REFRESH_INTERVAL_HOURS'ta bir çalışır (force=True hariç).
+    Döner: {"checked": n, "updated": m, "failed": k, "skipped": bool}"""
+    now = datetime.now()
+    if not force:
+        last = _last_synced_dt(_HB_STATUS_REFRESH_STATE_KEY)
+        if last and now - last < timedelta(hours=_HB_STATUS_REFRESH_INTERVAL_HOURS):
+            return {"checked": 0, "updated": 0, "failed": 0, "skipped": True}
+
+    if progress_cb:
+        progress_cb("Hepsiburada sipariş durumları tazeleniyor…")
+
+    cutoff_ms = int((now - timedelta(days=window_days)).timestamp() * 1000)
+    ph = ",".join("?" for _ in _HB_STATUS_TERMINAL)
+    with get_connection() as conn:
+        rows = conn.execute(f"""
+            SELECT order_number, shipment_package_id, status FROM orders
+            WHERE marketplace = 'hepsiburada' AND order_number IS NOT NULL
+              AND order_date >= ?
+              AND (status IS NULL OR status NOT IN ({ph}))
+        """, (cutoff_ms, *_HB_STATUS_TERMINAL)).fetchall()
+
+    rows_by_order = defaultdict(list)
+    for r in rows:
+        rows_by_order[r["order_number"]].append((r["shipment_package_id"], r["status"]))
+
+    def _fetch_one(order_number):
+        try:
+            return order_number, hepsiburada_get(HB_ORDER_DETAIL_PATH_TMPL.format(order_number=order_number))
+        except requests.RequestException as e:
+            logger.debug(f"[HB STATUS] detay alınamadı (orderNumber={order_number}): {e}")
+            return order_number, None
+
+    updates, failed = [], 0
+    with ThreadPoolExecutor(max_workers=_HB_DETAIL_FETCH_WORKERS) as executor:
+        for fut in as_completed([executor.submit(_fetch_one, on) for on in rows_by_order]):
+            order_number, detail = fut.result()
+            if detail is None:
+                failed += 1
+                continue
+            updates.extend(_hb_status_updates_from_detail(rows_by_order[order_number], detail))
+
+    if updates:
+        with get_connection() as conn:
+            conn.executemany(
+                "UPDATE orders SET status = ?, updated_at = datetime('now') "
+                "WHERE marketplace = 'hepsiburada' AND shipment_package_id = ?",
+                updates,
+            )
+
+    # Hepsi başarısızsa (ör. kimlik hatası) cursor ilerletilmez, sonraki turda tekrar dener.
+    if not rows_by_order or failed < len(rows_by_order):
+        _mark_synced(_HB_STATUS_REFRESH_STATE_KEY, now)
+    return {"checked": len(rows_by_order), "updated": len(updates), "failed": failed, "skipped": False}
+
+
 # ---- kaynak: app.py satır 1112-1166 (_run_hb_sync) ----
 def _run_hb_sync(start_dt, end_dt, incremental_ok=False):
     try:
@@ -1251,6 +1360,18 @@ def _run_hb_sync(start_dt, end_dt, incremental_ok=False):
         order_count, line_count, failed_detail_count = sync_hb_packages_to_db(orders_start, end_dt, progress_cb=report)
         _mark_synced("hb_orders_last_synced_end", end_dt)
 
+        # İptal/iade talebi durumlarını yakala (bkz. refresh_hb_order_statuses).
+        # Hata sipariş senkronunu bozmasın — sadece notta görünsün.
+        status_note = ""
+        try:
+            sr = refresh_hb_order_statuses(force=not incremental_ok, progress_cb=report)
+            if not sr["skipped"]:
+                status_note = f" Durum: {sr['checked']} sipariş kontrol edildi, {sr['updated']} güncellendi."
+                if sr["failed"]:
+                    status_note += f" ({sr['failed']} sipariş detayı alınamadı)"
+        except Exception as e:
+            status_note = f" (Sipariş durumları tazelenemedi: {e})"
+
         # Finans senkronu ayrı try/except'te: /transactions endpoint'inin şeması
         # henüz canlı doğrulanmadığı için burada bir hata (401/403/404/alan adı
         # uyuşmazlığı) sipariş senkronunu geçersiz kılmasın -- sadece uyarı olarak
@@ -1259,7 +1380,7 @@ def _run_hb_sync(start_dt, end_dt, incremental_ok=False):
         try:
             finance_start = (
                 _incremental_start(start_dt, "hb_finance_last_synced_end", _FINANCE_INCREMENTAL_OVERLAP_DAYS)
-                if incremental_ok else start_dt
+                if incremental_ok else min(start_dt, end_dt - timedelta(days=_HB_FINANCE_LOOKBACK_DAYS))
             )
             finance_result = sync_hb_finance_data(finance_start, end_dt, progress_cb=report)
             _mark_synced("hb_finance_last_synced_end", end_dt)
@@ -1282,7 +1403,7 @@ def _run_hb_sync(start_dt, end_dt, incremental_ok=False):
             message=(
                 f"Tamamlandı ({orders_start:%d.%m.%Y} - {end_dt:%d.%m.%Y} tarandı): "
                 f"{order_count} sipariş, {line_count} satır senkronize edildi."
-                f"{failed_detail_note}{finance_note}"
+                f"{failed_detail_note}{status_note}{finance_note}"
             ),
             marketplace="hepsiburada",
         )
@@ -1596,6 +1717,8 @@ def _dashboard_summary_for_marketplace(start_dt, end_dt, marketplace):
             # aksine aslında katkı kârı taşıyor, bu YENİ alan eklemeli
             # olarak eklendi, mevcut "gross_profit" davranışı DEĞİŞMEDİ.
             "true_gross_profit": t.get("trueGrossProfit"),
+            # Detaylı Analiz "cirodan net kâra" şelalesi için (KDV hariç).
+            "cogs_total": t.get("cogsTotal"),
             "cargo_total": t["cargoTotal"],
             "stoppage": t["stoppage"],
             "platform_service_fee": t["platformServiceFee"],

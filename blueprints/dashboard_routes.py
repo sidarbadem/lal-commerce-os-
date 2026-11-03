@@ -166,13 +166,22 @@ def today_net_profit():
     bu da 'Bugünkü Net Kazanç'ın, sadece bugün sipariş edilenleri kapsayan
     'Bugünkü Satış' (hero-today-sales / /api/daily-sales) rakamından daha
     büyük çıkmasına (matematiksel olarak imkânsız görünmesine) yol açıyordu.
-    Artık ikisi de aynı tarih eksenini (order_date) kullanıyor."""
+    Artık ikisi de aynı tarih eksenini (order_date) kullanıyor.
+
+    ?marketplace=trendyol|hepsiburada verilirse yalnızca o pazaryeri.
+    ?period=month: aynı hesap ayın 1'inden bugünün sonuna kadar (Bu Ay net
+    kâr). Maliyeti eksik SKU varsa netProfit yine None döner; o SKU'lar
+    hariç tutulmuş kısmi değer netProfitPartial alanında gelir."""
     now = datetime.now()
     start_of_day = datetime(now.year, now.month, now.day)
     end_of_day = start_of_day + timedelta(days=1)
+    period = request.args.get("period", "today")
+    start_dt = datetime(now.year, now.month, 1) if period == "month" else start_of_day
+    mp = request.args.get("marketplace")
+    mp_filter = mp if mp in ("trendyol", "hepsiburada") else None
 
     try:
-        summary = compute_profit_summary(start_dt=start_of_day, end_dt=end_of_day, marketplace_filter=None,
+        summary = compute_profit_summary(start_dt=start_dt, end_dt=end_of_day, marketplace_filter=mp_filter,
                                           include_settlement_only=False)
     except Exception as e:
         return jsonify({"error": f"Hesaplama hatası: {e}"}), 500
@@ -181,7 +190,10 @@ def today_net_profit():
     net_profit = summary["totals"]["netProfit"] if not missing_skus else None
 
     return jsonify({
+        "period": "month" if period == "month" else "today",
         "netProfit": net_profit,
+        "netProfitPartial": summary["totals"]["netProfit"],
+        "grossRevenue": summary["totals"].get("grossRevenue"),
         "hasMissingCost": bool(missing_skus),
         "missingCostCount": len(missing_skus),
     })

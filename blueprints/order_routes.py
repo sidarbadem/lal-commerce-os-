@@ -20,7 +20,7 @@ from database import get_connection, list_product_images
 from finance_engine import NEVER_FULFILLED_STATUSES
 from finance_engine import best_sellers as compute_best_sellers
 from finance_engine import compute_profit_summary
-from manual_orders import MANUAL_CHANNELS, fetch_manual_daily_rows, merge_into_listing
+from manual_orders import MANUAL_CHANNELS, fetch_manual_daily_rows, fetch_manual_orders, merge_into_listing
 from sync_core import DATA_START_DATE, _check_credentials, _resolve_sync_range, get_daily_returns
 
 bp = Blueprint("order_routes", __name__)
@@ -52,14 +52,25 @@ bp = Blueprint("order_routes", __name__)
 def _build_order_profit_map(start_dt, end_dt, marketplace_filter=None):
     summary = compute_profit_summary(start_dt=start_dt, end_dt=end_dt, marketplace_filter=marketplace_filter)
 
+    # 02.11.2026: Siparişler sayfası kâr dökümü gösteriyor -- tek netProfit
+    # yerine kalemler de (hepsi KDV HARİÇ, finance_engine 'profit' ile aynı
+    # taban) toplanıyor. 'other' = profit - (ciro - kalemler): iade etkisi vb.
+    # satır düzeltmeleri; kalemlerin toplamı her zaman netProfit'e eşit kalır.
     agg = defaultdict(lambda: {"profit": 0.0, "hasEstimatedSettlement": False,
-                                "hasMissingCost": False, "hasCargoMissing": False})
+                                "hasMissingCost": False, "hasCargoMissing": False,
+                                "revenue": 0.0, "commission": 0.0, "serviceFee": 0.0,
+                                "cargo": 0.0, "cogs": 0.0})
     for ln in summary["lines"]:
         order_number = ln.get("orderNumber")
         if not order_number:
             continue
         key = (ln["marketplace"], order_number)
         a = agg[key]
+        a["revenue"] += ln.get("grossRevenue") or 0.0
+        a["commission"] += ln.get("commission") or 0.0
+        a["serviceFee"] += ln.get("serviceFee") or 0.0
+        a["cargo"] += ln.get("cargo") or 0.0
+        a["cogs"] += ln.get("cogs") or 0.0
         if ln.get("missingCost"):
             a["hasMissingCost"] = True
         elif ln.get("profit") is not None:
@@ -75,12 +86,78 @@ def _build_order_profit_map(start_dt, end_dt, marketplace_filter=None):
 
     result = {}
     for key, a in agg.items():
+        net = None if a["hasMissingCost"] else round(a["profit"], 2)
+        base = a["revenue"] - a["commission"] - a["serviceFee"] - a["cargo"] - a["cogs"]
         result[key] = {
-            "netProfit": None if a["hasMissingCost"] else round(a["profit"], 2),
+            "netProfit": net,
             "profitEstimated": a["hasEstimatedSettlement"],
             "cargoEstimated": a["hasCargoMissing"],
+            "missingCost": a["hasMissingCost"],
+            "revenue": round(a["revenue"], 2),
+            "commission": round(a["commission"], 2),
+            "serviceFee": round(a["serviceFee"], 2),
+            "cargo": round(a["cargo"], 2),
+            "cogs": None if a["hasMissingCost"] else round(a["cogs"], 2),
+            "other": None if net is None else round(net - base, 2),
+            "margin": _margin(net, a["revenue"]),
         }
     return result
+
+
+def _margin(net, revenue):
+    if net is None or not revenue or revenue <= 0:
+        return None
+    return round(net / revenue * 100, 1)
+
+
+def _summarize_profit(profit_map):
+    """Dönem özeti (Siparişler üst şeridi). Maliyeti eksik siparişler kâr
+    toplamına KATILMAZ (sessizce 0 sayılmaz) -- ayrıca sayılıp gösterilir."""
+    keys = ("revenue", "commission", "serviceFee", "cargo", "cogs", "other", "netProfit")
+    tot = {k: 0.0 for k in keys}
+    counted = missing = estimated = loss = 0
+    for info in profit_map.values():
+        if info["netProfit"] is None:
+            missing += 1
+            continue
+        counted += 1
+        if info["profitEstimated"] or info["cargoEstimated"]:
+            estimated += 1
+        if info["netProfit"] < 0:
+            loss += 1
+        for k in keys:
+            tot[k] += info.get(k) or 0.0
+    out = {k: round(v, 2) for k, v in tot.items()}
+    out.update({
+        "margin": _margin(tot["netProfit"], tot["revenue"]),
+        "orderCount": counted,
+        "missingCostCount": missing,
+        "estimatedCount": estimated,
+        "lossCount": loss,
+    })
+    return out
+
+
+def _manual_breakdown(o):
+    """Manuel sipariş satırını pazaryeri siparişleriyle aynı döküm alanlarına getirir."""
+    o.update({
+        "revenue": o.get("saleTotal"),
+        "cogs": o.get("cogsTotal"),
+        "cargo": o.get("cargoCost"),
+        "serviceFee": 0.0,
+        "other": 0.0,
+        "missingCost": False,
+        "margin": _margin(o.get("netProfit"), o.get("saleTotal")),
+    })
+    return o
+
+
+PROFIT_FILTERS = {
+    "loss": lambda o: o.get("netProfit") is not None and o["netProfit"] < 0,
+    "low_margin": lambda o: o.get("margin") is not None and o["margin"] < 10,
+    "missing_cost": lambda o: o.get("netProfit") is None,
+}
+SORT_KEYS = ("date", "profit", "margin", "revenue")
 
 
 @bp.route("/api/daily-sales")
@@ -110,7 +187,9 @@ def daily_sales():
                 f"""SELECT shipment_package_id, marketplace,
                            SUM(quantity) AS qty,
                            SUM(COALESCE(line_unit_price, 0) * COALESCE(quantity, 0)
-                               * COALESCE(commission_rate, 0) / 100.0) AS est_commission
+                               * COALESCE(commission_rate, 0) / 100.0
+                               -- HB commission_rate KDV hariç (bkz. finance_engine.HB_COMMISSION_VAT_MULTIPLIER)
+                               * CASE WHEN marketplace = 'hepsiburada' THEN 1.20 ELSE 1.0 END) AS est_commission
                     FROM order_lines
                     WHERE (marketplace, shipment_package_id) IN ({placeholders})
                     GROUP BY marketplace, shipment_package_id""",
@@ -124,6 +203,7 @@ def daily_sales():
     daily_map = defaultdict(lambda: {
         "order_count": 0, "gross_amount": 0.0, "discount_amount": 0.0,
         "net_amount": 0.0, "commission_amount": 0.0, "item_count": 0, "cancelled_count": 0,
+        "by_marketplace": defaultdict(float),
     })
 
     # DÜZELTME (B1 - Faz 0 audit, B2 ile birlikte AMENDMENT): iptal edilen
@@ -156,6 +236,7 @@ def daily_sales():
             d["gross_amount"] += r["gross_amount"] or 0
             d["discount_amount"] += r["discount_amount"] or 0
             d["net_amount"] += r["net_amount"] or 0
+            d["by_marketplace"][r["marketplace"]] += r["net_amount"] or 0
             d["item_count"] += item_counts.get((r["marketplace"], r["shipment_package_id"]), 0)
             d["commission_amount"] += commission_by_key.get((r["marketplace"], r["shipment_package_id"]), 0)
 
@@ -169,6 +250,7 @@ def daily_sales():
         else:
             d["gross_amount"] += m["sale"]
             d["net_amount"] += m["sale"]
+            d["by_marketplace"]["manuel"] += m["sale"]
             d["item_count"] += m["qty"]
             d["commission_amount"] += m["commission"]
 
@@ -178,6 +260,9 @@ def daily_sales():
         d["discount_amount"] = round(d["discount_amount"], 2)
         d["net_amount"] = round(d["net_amount"], 2)
         d["commission_amount"] = round(d["commission_amount"], 2)
+        # Günlük net_amount'un pazaryeri kırılımı (manuel kanallar "manuel"):
+        # AI Genel Bakış grafiği platform bazlı yığılmış alan çiziyor.
+        d["by_marketplace"] = {k: round(v, 2) for k, v in d["by_marketplace"].items()}
 
     totals = {
         "order_count": sum(d["order_count"] for d in daily),
@@ -253,6 +338,64 @@ def daily_returns():
 
     return jsonify({"daily": daily})
 
+def _fetch_lines(conn, order_rows):
+    pairs = [(r["marketplace"], r["shipment_package_id"]) for r in order_rows]
+    lines_by_spid = defaultdict(list)
+    if not pairs:
+        return lines_by_spid
+    placeholders = ",".join(["(?,?)"] * len(pairs))
+    flat_params = [v for pair in pairs for v in pair]
+    line_rows = conn.execute(
+        f"""SELECT * FROM order_lines WHERE (marketplace, shipment_package_id) IN ({placeholders})""",
+        flat_params,
+    ).fetchall()
+    # Görsel: SADECE Trendyol'dan senkronize ediliyor (bkz.
+    # stock_client.fetch_trendyol_product_images), ama list_product_images()
+    # marketplace ayrımı yapmadan sku bazlı döndüğü için aynı SKU
+    # Hepsiburada'da satılıyorsa da otomatik eşleşir. Görsel hiç
+    # senkronize edilmemişse sessizce None kalır (frontend placeholder
+    # göstermeli — eski/yanlış görsel uydurulmaz).
+    image_map = list_product_images()
+    for ln in line_rows:
+        image_url = image_map.get(ln["merchant_sku"]) or image_map.get(ln["barcode"])
+        lines_by_spid[(ln["marketplace"], ln["shipment_package_id"])].append({
+            "barcode": ln["barcode"],
+            "merchantSku": ln["merchant_sku"],
+            "productName": ln["product_name"],
+            "quantity": ln["quantity"],
+            "lineUnitPrice": ln["line_unit_price"],
+            "commissionRate": ln["commission_rate"],
+            "imageUrl": image_url,
+        })
+    return lines_by_spid
+
+
+_BREAKDOWN_KEYS = ("revenue", "commission", "serviceFee", "cargo", "cogs", "other", "margin")
+
+
+def _order_dict(r, lines, profit_info):
+    o = {
+        "shipmentPackageId": r["shipment_package_id"],
+        "orderNumber": r["order_number"],
+        "orderDate": r["order_date"],
+        "status": r["status"],
+        "customer": r["customer"],
+        "cargoProvider": r["cargo_provider"],
+        "grossAmount": r["gross_amount"],
+        "discountAmount": r["discount_amount"],
+        "netAmount": r["net_amount"],
+        "marketplace": r["marketplace"],
+        "lines": lines,
+        "netProfit": profit_info.get("netProfit"),
+        "profitEstimated": profit_info.get("profitEstimated", False),
+        "cargoEstimated": profit_info.get("cargoEstimated", False),
+        "missingCost": profit_info.get("missingCost", False),
+    }
+    for k in _BREAKDOWN_KEYS:
+        o[k] = profit_info.get(k)
+    return o
+
+
 @bp.route("/api/orders")
 def api_orders():
     args = request.args
@@ -283,6 +426,14 @@ def api_orders():
     page_size = max(1, min(args.get("page_size", default=50, type=int) or 50, 200))
     offset = (page - 1) * page_size
 
+    profit_filter = (args.get("profit_filter") or "").strip()
+    if profit_filter not in PROFIT_FILTERS:
+        profit_filter = ""
+    sort = (args.get("sort") or "date").strip()
+    if sort not in SORT_KEYS:
+        sort = "date"
+    sort_desc = (args.get("dir") or "desc").lower() != "asc"
+
     marketplace = (args.get("marketplace") or "").strip().lower()
     mp_filter = marketplace if marketplace in ("trendyol", "hepsiburada") else None
 
@@ -301,87 +452,80 @@ def api_orders():
         where.append("1 = 0")
     where_sql = " AND ".join(where)
 
-    with get_connection() as conn:
-        total = conn.execute(
-            f"SELECT COUNT(*) AS c FROM orders WHERE {where_sql}", params
-        ).fetchone()["c"]
-
-        order_rows = conn.execute(
-            f"""SELECT * FROM orders WHERE {where_sql}
-                ORDER BY order_date DESC LIMIT ? OFFSET ?""",
-            [*params, page_size, offset],
-        ).fetchall()
-
-        pairs = [(r["marketplace"], r["shipment_package_id"]) for r in order_rows]
-        lines_by_spid = defaultdict(list)
-        if pairs:
-            placeholders = ",".join(["(?,?)"] * len(pairs))
-            flat_params = [v for pair in pairs for v in pair]
-            line_rows = conn.execute(
-                f"""SELECT * FROM order_lines WHERE (marketplace, shipment_package_id) IN ({placeholders})""",
-                flat_params,
-            ).fetchall()
-            # Görsel: SADECE Trendyol'dan senkronize ediliyor (bkz.
-            # stock_client.fetch_trendyol_product_images), ama list_product_images()
-            # marketplace ayrımı yapmadan sku bazlı döndüğü için aynı SKU
-            # Hepsiburada'da satılıyorsa da otomatik eşleşir. Görsel hiç
-            # senkronize edilmemişse sessizce None kalır (frontend placeholder
-            # göstermeli — eski/yanlış görsel uydurulmaz).
-            image_map = list_product_images()
-            for ln in line_rows:
-                image_url = image_map.get(ln["merchant_sku"]) or image_map.get(ln["barcode"])
-                lines_by_spid[(ln["marketplace"], ln["shipment_package_id"])].append({
-                    "barcode": ln["barcode"],
-                    "merchantSku": ln["merchant_sku"],
-                    "productName": ln["product_name"],
-                    "quantity": ln["quantity"],
-                    "lineUnitPrice": ln["line_unit_price"],
-                    "commissionRate": ln["commission_rate"],
-                    "imageUrl": image_url,
-                })
-
     # DÜZELTME (09.08.2026): sipariş bazlı Net Kâr — bkz. _build_order_profit_map
-    # docstring'i. Sadece BU SAYFADAKİ (page/page_size ile sınırlı) siparişler
-    # için değil, tüm istenen tarih aralığı için hesaplanıyor çünkü
-    # compute_profit_summary zaten aralık bazlı çalışıyor; burada sadece
-    # sayfadaki siparişlere lookup yapılıyor (fazladan hesaplama yok, tek
-    # bir compute_profit_summary çağrısı sayfa başına yeterli).
+    # docstring'i. Tüm istenen tarih aralığı için tek bir compute_profit_summary
+    # çağrısı; sayfadaki siparişler bu haritadan lookup yapılıyor.
     try:
         profit_map = _build_order_profit_map(start_dt, end_dt, marketplace_filter=mp_filter)
     except Exception:
         # Kâr hesaplaması patlarsa (örn. eksik veri) sipariş listesinin
         # tamamı görünmez olmasın — netProfit alanları None kalır.
         profit_map = {}
+    # Dönem özeti yalnızca Trendyol/HB için (manuel kanal seçiliyse anlamsız).
+    summary = None if marketplace in MANUAL_CHANNELS else (_summarize_profit(profit_map) if profit_map else None)
 
-    orders = []
-    for r in order_rows:
-        profit_info = profit_map.get((r["marketplace"], r["order_number"]), {})
-        orders.append({
-            "shipmentPackageId": r["shipment_package_id"],
-            "orderNumber": r["order_number"],
-            "orderDate": r["order_date"],
-            "status": r["status"],
-            "customer": r["customer"],
-            "cargoProvider": r["cargo_provider"],
-            "grossAmount": r["gross_amount"],
-            "discountAmount": r["discount_amount"],
-            "netAmount": r["net_amount"],
-            "marketplace": r["marketplace"],
-            "lines": lines_by_spid.get((r["marketplace"], r["shipment_package_id"]), []),
-            "netProfit": profit_info.get("netProfit"),
-            "profitEstimated": profit_info.get("profitEstimated", False),
-            "cargoEstimated": profit_info.get("cargoEstimated", False),
-        })
+    if profit_filter or sort != "date":
+        # 02.11.2026: kâra göre filtre/sıralama sayfalamadan ÖNCE yapılmalı;
+        # aralıktaki tüm siparişler (manuel dahil) bellekte süzülüp sıralanır,
+        # satır detayı yalnızca seçilen sayfa için çekilir.
+        with get_connection() as conn:
+            all_rows = conn.execute(
+                f"SELECT * FROM orders WHERE {where_sql} ORDER BY order_date DESC", params
+            ).fetchall()
+            items = [_order_dict(r, None, profit_map.get((r["marketplace"], r["order_number"]), {}))
+                     for r in all_rows]
+            row_by_id = {id(o): r for o, r in zip(items, all_rows)}
+            if not mp_filter:
+                channel = marketplace if marketplace in MANUAL_CHANNELS else None
+                try:
+                    manual = fetch_manual_orders(conn, start_ms, end_ms, status=status, q=q, channel=channel)
+                except Exception:
+                    manual = []
+                items.extend(_manual_breakdown(m) for m in manual)
+            if profit_filter:
+                items = [o for o in items if PROFIT_FILTERS[profit_filter](o)]
+            field = {"date": "orderDate", "profit": "netProfit", "margin": "margin", "revenue": "revenue"}[sort]
+            present = [o for o in items if o.get(field) is not None]
+            absent = [o for o in items if o.get(field) is None]
+            present.sort(key=lambda o: o[field], reverse=sort_desc)
+            items = present + absent  # hesaplanamayanlar her zaman sonda
+            total = len(items)
+            orders = items[offset:offset + page_size]
+            lines_by_spid = _fetch_lines(conn, [row_by_id[id(o)] for o in orders if id(o) in row_by_id])
+        for o in orders:
+            if o.get("lines") is None:
+                o["lines"] = lines_by_spid.get((o["marketplace"], o["shipmentPackageId"]), [])
+    else:
+        with get_connection() as conn:
+            total = conn.execute(
+                f"SELECT COUNT(*) AS c FROM orders WHERE {where_sql}", params
+            ).fetchone()["c"]
+            order_rows = conn.execute(
+                f"""SELECT * FROM orders WHERE {where_sql}
+                    ORDER BY order_date DESC LIMIT ? OFFSET ?""",
+                [*params, page_size, offset],
+            ).fetchall()
+            lines_by_spid = _fetch_lines(conn, order_rows)
 
-    orders, total = merge_into_listing(
-        orders, total, where_sql=where_sql, params=params, offset=offset, page_size=page_size,
-        start_ms=start_ms, end_ms=end_ms, status=status, q=q, marketplace=marketplace,
-    )
+        orders = [
+            _order_dict(r, lines_by_spid.get((r["marketplace"], r["shipment_package_id"]), []),
+                        profit_map.get((r["marketplace"], r["order_number"]), {}))
+            for r in order_rows
+        ]
+        orders, total = merge_into_listing(
+            orders, total, where_sql=where_sql, params=params, offset=offset, page_size=page_size,
+            start_ms=start_ms, end_ms=end_ms, status=status, q=q, marketplace=marketplace,
+        )
+        for o in orders:
+            if o.get("isManual"):
+                _manual_breakdown(o)
+
     return jsonify({
         "orders": orders,
         "total": total,
         "page": page,
         "page_size": page_size,
+        "summary": summary,
         "start_date": start_dt.strftime("%Y-%m-%d"),
         "end_date": (end_dt - timedelta(days=1)).strftime("%Y-%m-%d"),
     })

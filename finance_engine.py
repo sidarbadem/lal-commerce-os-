@@ -116,6 +116,14 @@ CARGO_COST_FALLBACK_ESTIMATE = 200.0
 # -> CARGO_COST_FALLBACK_ESTIMATE. Bkz. _load_sku_cargo_averages.
 CARGO_AVG_LOOKBACK_DAYS = 90
 
+# 02.11.2026: Hepsiburada tahmini (settlement'ı henüz gelmemiş) satırlar için.
+# order_lines.commission_rate HB'de KDV HARİÇ geliyor; settlement'taki gerçek
+# komisyon KDV dahil. Canlı DB'de 329 satırda gerçek/oran = 1,20 (sabit).
+# PaymentServiceCostReflection ise her ay ciro × %0,80 (min/max 0,799-0,802).
+# ProcessingFeeExpense düzensiz (~%10 siparişte ~12 TL) — tahmin edilmiyor.
+HB_COMMISSION_VAT_MULTIPLIER = 1.20
+HB_PAYMENT_SERVICE_RATE = 0.008
+
 # ============================================================
 # KATEGORİ EŞLEMESİ (marketplace-farkında, raw_transaction_type -> kategori)
 # ============================================================
@@ -148,7 +156,27 @@ _TY_MANUAL_REFUND_CANONICAL = {"ManualRefund", "ManualRefundCancel"}
 # Hiç sevk edilmemiş / oluşmamış paketler kâr hesabına dahil edilmez.
 # (bkz. eski profit_engine.py'deki aynı gerekçe — ürün depodan çıkmadıysa
 # ne gerçek maliyet ne gerçek gelir oluşur.)
-NEVER_FULFILLED_STATUSES = ("Cancelled", "İptal Edildi", "UnSupplied", "UnDelivered", "UnPacked")
+#
+# 02.11.2026: Hepsiburada iptal durumları eklendi. HB detay API'si iptalde
+# "Cancelled" değil "CancelledByCustomer"/"CancelledByMerchant"/"CancelledBySap"
+# döndürüyor (canlı yanıtla doğrulandı) — önceden bu siparişler kâra satış gibi
+# giriyordu. Durumları sync_core.refresh_hb_order_statuses() tazeler.
+NEVER_FULFILLED_STATUSES = (
+    "Cancelled", "İptal Edildi", "UnSupplied", "UnDelivered", "UnPacked",
+    "CancelledByCustomer", "CancelledByMerchant", "CancelledBySap",
+)
+
+# İade talebi açılmış (sonucu belli değil) siparişler: satış olarak sayılmaya
+# devam eder (iade kesinleşince Return kaydı düşülür — diğer iadelerle aynı
+# model), ama settlement'ı "normal bekleyen" satırlardan AYRI raporlanır.
+CLAIM_PENDING_STATUSES = ("ClaimCreated",)
+
+
+def _line_status(ln):
+    try:
+        return ln["status"]
+    except (KeyError, IndexError, TypeError):
+        return None
 
 
 def _categorize(marketplace, raw_type, canonical_type=None):
@@ -181,6 +209,22 @@ def _categorize(marketplace, raw_type, canonical_type=None):
     return "other"
 
 
+def _return_commission_refund(marketplace, debt, credit, commission_amount):
+    """Bir iade kaydında satıcıya GERİ ödenen komisyon (KDV dahil, pozitif=geri ödeme).
+
+    02.11.2026: Trendyol 'İade' kayıtlarında commission_amount, iadeyle birlikte
+    satıcıya iade edilen komisyondur — canlı DB'de 41/41 kayıtta
+    debt - credit - commission_amount = seller_revenue (ör. 1052.51 - 168.40 = 884.11).
+    Önceden yok sayılıyordu; iade başına ~%13 fazla zarar yazılıyordu.
+    İptal yönündeki kayıtta (debt-credit < 0) işaret tersine döner.
+    HB'de komisyon iadesi ayrı 'CommissionInvoiceRefund' kaydıyla gelir ve
+    satış satırının komisyonuyla netleşir, Return satırında komisyon yoktur."""
+    if marketplace == "hepsiburada":
+        return 0.0
+    c = float(commission_amount or 0.0)
+    return c if (debt or 0.0) - (credit or 0.0) >= 0 else -c
+
+
 def _resolve_range(days=None, start_dt=None, end_dt=None):
     if start_dt is not None and end_dt is not None:
         pass
@@ -208,6 +252,29 @@ def _load_lines(conn, start_ms, end_ms):
         WHERE o.order_date BETWEEN ? AND ?
           AND (o.status IS NULL OR o.status NOT IN ({placeholders}))
     """, (start_ms, end_ms, *NEVER_FULFILLED_STATUSES)).fetchall()
+
+
+def _drop_settled_hb_placeholders(conn, lines):
+    """02.11.2026: HB placeholder (paketlenmeden önce /orders'tan yazılan,
+    negatif shipment_package_id'li, barkodu merchant SKU olan) satırları, o
+    siparişin GERÇEK paket numarasıyla settlement kaydı varsa düşürür.
+    Placeholder normalde paket /packages'ta görününce silinir; paket senkron
+    penceresini kaçırırsa placeholder kalıcı oluyor ve gerçek settlement
+    (farklı paket+barkod anahtarıyla) ayrıca sentetik satır ürettiği için
+    sipariş ÇİFT SAYILIYORDU. Gerçek veri (settlement) kazanır."""
+    ph_orders = {ln["order_number"] for ln in lines
+                 if ln["marketplace"] == "hepsiburada" and (ln["shipment_package_id"] or 0) < 0}
+    if not ph_orders:
+        return lines
+    marks = ",".join("?" for _ in ph_orders)
+    settled = {r[0] for r in conn.execute(f"""
+        SELECT DISTINCT order_number FROM settlements
+        WHERE marketplace = 'hepsiburada' AND shipment_package_id > 0
+          AND transaction_type = 'Sale' AND order_number IN ({marks})
+    """, tuple(ph_orders)).fetchall()}
+    return [ln for ln in lines
+            if not (ln["marketplace"] == "hepsiburada" and (ln["shipment_package_id"] or 0) < 0
+                    and ln["order_number"] in settled)]
 
 
 def _load_settlement_lines(conn, start_ms=None, end_ms=None):
@@ -335,20 +402,24 @@ def _build_settlement_only_lines(settlement_totals_in_range, known_keys, barcode
             # uretmenin anlami yok (yanlislikla 0 gelirli bir satir eklenir).
             continue
         sku_info = barcode_sku_map.get((marketplace, barcode), {})
+        # 02.11.2026: Satış geliri olmayan (yalnızca masraf: HB ProcessingFeeExpense
+        # vb.) kayıt bir ürün satışı DEĞİL — masraf sayılır ama ürün maliyeti
+        # (COGS) düşülmez. Önceden quantity=1 ile tam ürün maliyeti yazılıyordu.
+        sold = t["gross_revenue"] > 0
         synthetic.append({
             "shipment_package_id": spid,
             "marketplace": marketplace,
             "barcode": barcode,
             "merchant_sku": sku_info.get("merchant_sku"),
             "product_name": sku_info.get("product_name") or f"Bilinmeyen ürün (barkod: {barcode})",
-            "quantity": 1,
+            "quantity": 1 if sold else 0,
             "line_unit_price": None,
             "commission_rate": None,
             "order_date": t["min_date"],
             "order_number": t["order_number"],
             "status": None,
             "_fromSettlementOnly": True,
-            "_quantityEstimated": True,
+            "_quantityEstimated": sold,
         })
     return synthetic
 
@@ -367,18 +438,23 @@ def _load_return_totals(conn, start_ms, end_ms, order_scope=None):
     rows = conn.execute("""
         SELECT marketplace, shipment_package_id, raw_transaction_type, transaction_type,
                COALESCE(SUM(debt), 0) AS debt_sum,
-               COALESCE(SUM(credit), 0) AS credit_sum, COUNT(*) AS cnt
+               COALESCE(SUM(credit), 0) AS credit_sum, COUNT(*) AS cnt,
+               COALESCE(SUM(CASE WHEN COALESCE(debt,0)-COALESCE(credit,0) >= 0
+                                 THEN COALESCE(commission_amount,0)
+                                 ELSE -COALESCE(commission_amount,0) END), 0) AS commission_signed
         FROM settlements
         WHERE transaction_date BETWEEN ? AND ?
         GROUP BY marketplace, shipment_package_id, raw_transaction_type, transaction_type
     """, (start_ms, end_ms)).fetchall()
-    totals = defaultdict(lambda: {"total": 0.0, "count": 0})
+    totals = defaultdict(lambda: {"total": 0.0, "count": 0, "commission_refund": 0.0})
     for r in rows:
         if order_scope is not None and (r["marketplace"], r["shipment_package_id"]) not in order_scope:
             continue
         if _categorize(r["marketplace"], r["raw_transaction_type"], r["transaction_type"]) == "return":
             totals[r["marketplace"]]["total"] += (r["debt_sum"] or 0) - (r["credit_sum"] or 0)
             totals[r["marketplace"]]["count"] += r["cnt"]
+            if r["marketplace"] != "hepsiburada":
+                totals[r["marketplace"]]["commission_refund"] += r["commission_signed"] or 0.0
     return totals
 
 
@@ -409,7 +485,7 @@ def _resolve_return_allocations(conn, start_ms, end_ms, line_rows, settlement_to
         lookup_params.extend(package_ids)
     all_rows = conn.execute(f"""
         SELECT id, marketplace, transaction_date, order_number, shipment_package_id,
-               barcode, COALESCE(debt,0)-COALESCE(credit,0) AS amount
+               barcode, COALESCE(debt,0)-COALESCE(credit,0) AS amount, commission_amount
         FROM settlements
         WHERE {return_clause} AND transaction_date <= ? AND ({' OR '.join(relevant)})
         ORDER BY transaction_date,
@@ -424,6 +500,7 @@ def _resolve_return_allocations(conn, start_ms, end_ms, line_rows, settlement_to
         by_sale_key.setdefault((ln["marketplace"], ln["shipment_package_id"], ln["barcode"]), ln)
     used_amount = defaultdict(float)
     allocations = defaultdict(lambda: {"return_amount": 0.0, "return_amount_for_cogs": 0.0,
+                                      "commission_refund": 0.0,
                                       "return_count": 0, "return_date": None})
     uncertain = []
     matched = []
@@ -475,6 +552,8 @@ def _resolve_return_allocations(conn, start_ms, end_ms, line_rows, settlement_to
                     condition = conditions.get((r["marketplace"], r["id"]), "sellable")
                     target = allocations[sale_key]
                     target["return_amount"] += amount
+                    target["commission_refund"] += _return_commission_refund(
+                        r["marketplace"], amount, 0.0, r["commission_amount"])
                     if condition == "sellable":
                         target["return_amount_for_cogs"] += amount
                     target["return_count"] += 1
@@ -779,7 +858,7 @@ def _fixed_expense_totals(rows, expense_types, aliases, manual_setting, auto_ads
 # ============================================================
 
 def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlement_only=True,
-                           skip_known_order_settlements=False):
+                           skip_known_order_settlements=True):
     """DB'den bir kâr/zarar özeti için gereken TÜM ham veriyi tek bağlantı
     içinde okur ve (satırlar + yardımcı haritalar) olarak döner.
 
@@ -806,7 +885,7 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
     'Bugünkü Net Kazanç' gibi 'bugünkü satış'la aynı tarih eksenine (order_date)
     dayanması gereken, kısa/nokta aralıklı hesaplarda False kullanılmalı."""
     with get_connection() as conn:
-        lines = list(_load_lines(conn, start_ms, end_ms))
+        lines = _drop_settled_hb_placeholders(conn, list(_load_lines(conn, start_ms, end_ms)))
         if marketplace_filter:
             lines = [ln for ln in lines if ln["marketplace"] == marketplace_filter]
         # 02.11.2026: aylık görünümde siparişi order_lines'ta olan hakedişler için
@@ -847,11 +926,11 @@ def _gather_summary_inputs(start_ms, end_ms, marketplace_filter, include_settlem
         # return total and therefore reduce revenue, but do not reverse COGS.
         for entry in settlement_totals_in_range.values():
             entry.update(return_amount=0.0, return_amount_for_cogs=0.0,
-                         return_count=0, return_date=None)
+                         commission_refund=0.0, return_count=0, return_date=None)
         for sale_key, allocation in return_allocations.items():
             target = settlement_totals_in_range.setdefault(sale_key, {
                 "gross_revenue": 0.0, "commission": 0.0, "service_fee": 0.0,
-                "return_amount": 0.0, "return_amount_for_cogs": 0.0,
+                "return_amount": 0.0, "return_amount_for_cogs": 0.0, "commission_refund": 0.0,
                 "return_count": 0, "order_number": None, "min_date": None,
                 "return_date": None,
             })
@@ -992,9 +1071,13 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
             + (ln["marketplace_discount"] or 0)
         )
         gross_revenue = unit_price_with_discounts * (ln["quantity"] or 0)
-        commission = gross_revenue * rate
-        service_fee = 0.0
-        net_hakedis = gross_revenue - commission
+        if ln["marketplace"] == "hepsiburada":
+            commission = gross_revenue * rate * HB_COMMISSION_VAT_MULTIPLIER
+            service_fee = gross_revenue * HB_PAYMENT_SERVICE_RATE
+        else:
+            commission = gross_revenue * rate
+            service_fee = 0.0
+        net_hakedis = gross_revenue - commission - service_fee
         estimated = True
 
     # DÜZELTME: order_lines'da hiç karşılığı olmayan (settlement-only) satırlarda
@@ -1023,17 +1106,22 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
             missing_cost_sku = effective_sku
 
     spid = ln["shipment_package_id"]
+    # 02.11.2026: Satışı olmayan (yalnızca masraf) sentetik satır bir sevkiyat
+    # değildir: yalnızca KENDİ paketine kesilmiş gerçek kargo alır. Sipariş
+    # numarasıyla eşleşme aynı kargoyu ikinci kez sayıyor, eşleşme yoksa da
+    # tahmini kargo uyduruluyordu.
+    no_sale_line = isinstance(ln, dict) and ln.get("_fromSettlementOnly") and not (ln["quantity"] or 0)
     cargo_total_for_order = cargo_by_spid.get((ln["marketplace"], spid))
+    if cargo_total_for_order is None and no_sale_line:
+        cargo_total_for_order = 0.0
     if cargo_total_for_order is None:
         cargo_total_for_order = cargo_by_order_number.get((ln["marketplace"], ln["order_number"]))
     cargo_missing_order = None
     if cargo_total_for_order is None:
-        # B4 DÜZELTMESİ (09.09.2026): kargo faturası henüz senkron olmadıysa
-        # cargo_line'ı SESSİZCE 0.0 kabul edip profit'i gerçekmiş gibi
-        # hesaplamak SESSİZ VERİ UYDURMA'dır (bkz. proje ilkesi: "No silent
-        # data absence"). cargo=None kalır (0.0 DEĞİL) ve profit de (missingCost
-        # ile AYNI ilkeyle) aşağıda None'a düşürülür — bkz.
-        # test_missing_cargo_invoice_flags_profit_as_none_not_zero.
+        # Kargo faturası henüz senkron olmadıysa 0 kabul edilmez: 22.09.2026'dan
+        # beri SKU ortalaması -> genel ortalama -> CARGO_COST_FALLBACK_ESTIMATE
+        # zinciriyle TAHMİNİ kargo kullanılır ve satır cargoEstimated/cargoMissing
+        # ile işaretlenir (profit None'a düşmez).
         cargo_line = CARGO_COST_FALLBACK_ESTIMATE
         if cargo_estimate_by_group is not None:
             group_key = (ln["marketplace"], spid if spid is not None else f"order:{ln['order_number']}")
@@ -1112,10 +1200,12 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
     # olmasıyla ÇAKIŞMAZ (iki farklı, birbirinden bağımsız düzeltme).
     return_amount = 0.0
     return_amount_for_cogs = 0.0
+    return_commission_refund = 0.0
     return_date = None
     if settlement_totals_in_range is not None:
         _rng = settlement_totals_in_range.get(key) or {}
         return_amount = _rng.get("return_amount", 0.0) or 0.0
+        return_commission_refund = _rng.get("commission_refund", 0.0) or 0.0
         return_amount_for_cogs = _rng.get("return_amount_for_cogs", return_amount) or 0.0
         return_date = _rng.get("return_date")
 
@@ -1147,6 +1237,7 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
             cogs_reversal_estimated = True
     return_amount_excl_vat = _amount_ex_vat(return_amount, {"vat_included": sale_vat_setting.get("vat_included", 1), "vat_rate": sale_vat_rate})
     cogs_reversal_excl_vat = _amount_ex_vat(cogs_reversal, {"vat_included": cost_vat_setting.get("vat_included", 1), "vat_rate": cost_vat_rate}) if cogs_reversal is not None else None
+    return_commission_refund_excl_vat = _amount_ex_vat(return_commission_refund, commission_vat_setting) or 0.0
 
     line_result = {
         "orderNumber": ln["order_number"],
@@ -1162,6 +1253,8 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
         "returnAmountInclVat": round(return_amount, 2),
         "returnAmountExclVat": round(return_amount_excl_vat, 2),
         "returnAmountForCogsInclVat": round(return_amount_for_cogs, 2),
+        "returnCommissionRefund": round(return_commission_refund_excl_vat, 2),
+        "returnCommissionRefundInclVat": round(return_commission_refund, 2),
         # İadenin GERÇEK transaction_date'i — orderDate ile KARIŞTIRILMAMALI.
         # Grafiklerde (daily/monthly) iadenin doğru periyoda düşmesi için kullanılır.
         "returnDate": return_date,
@@ -1191,6 +1284,7 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
         "profitExclVat": round(profit_excl_vat, 2) if profit_excl_vat is not None else None,
         "trueGrossProfit": round(true_gross_profit, 2) if true_gross_profit is not None else None,
         "estimated": estimated,
+        "claimPending": _line_status(ln) in CLAIM_PENDING_STATUSES,
         "missingCost": missing_cost,
         "cargoMissing": cargo_missing,
         "cargoEstimated": cargo_estimated,
@@ -1203,7 +1297,8 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
     if isinstance(ln, dict) and ln.get("_returnOnly"):
         # Eski satışın geliri/maliyeti satış ayında kalır. İade ayında yalnızca
         # iadeyi ve KDV hariç geri kazanılan ürün maliyetini ürün kârına yaz.
-        return_effect = -(return_amount_excl_vat or 0) + (cogs_reversal_excl_vat or 0)
+        return_effect = (-(return_amount_excl_vat or 0) + (cogs_reversal_excl_vat or 0)
+                         + return_commission_refund_excl_vat)
         line_result.update({
             "grossRevenue": 0.0, "grossRevenueInclVat": 0.0,
             "netRevenue": round(-(return_amount_excl_vat or 0), 2),
@@ -1220,7 +1315,8 @@ def _build_line_result(ln, settlement_totals_all, costs, cargo_by_spid, cargo_by
         })
     elif return_amount_excl_vat:
         # Aynı ay içindeki iadeyi de ürün kârından yalnızca bir kez düş.
-        return_effect = -(return_amount_excl_vat or 0) + (cogs_reversal_excl_vat or 0)
+        return_effect = (-(return_amount_excl_vat or 0) + (cogs_reversal_excl_vat or 0)
+                         + return_commission_refund_excl_vat)
         if line_result["profit"] is not None:
             line_result["profit"] = round(line_result["profit"] + return_effect, 2)
             line_result["profitExclVat"] = line_result["profit"]
@@ -1245,13 +1341,15 @@ def _compute_overhead_by_marketplace(other_totals, return_totals, marketplaces_p
         platform_fee = platform_fee_raw - kargo_within - komisyon_within - advertising
         cash_advance = ot.get("CashAdvance", {}).get("net", 0)
         return_amount = return_totals.get(mp, {}).get("total", 0)
+        commission_refund = return_totals.get(mp, {}).get("commission_refund", 0)
         overhead_by_mp[mp] = {
             "stoppage": stoppage,
             "platform_fee": platform_fee,
             "advertising": advertising,
             "cash_advance": cash_advance,
             "return_amount": return_amount,
-            "total": platform_fee + cash_advance + return_amount,
+            "return_commission_refund": commission_refund,
+            "total": platform_fee + cash_advance + return_amount - commission_refund,
             "has_data": mp in other_totals or mp in return_totals,
         }
         payment_order_by_mp[mp] = ot.get("PaymentOrder", {}).get("debt", 0) - ot.get("PaymentOrder", {}).get("credit", 0)
@@ -1300,6 +1398,9 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
         cfg = vat_settings or {}
         return_total_ex = _amount_ex_vat(mp_overhead.get("return_amount", 0), cfg.get("sale"))
         unmatched_return_ex = (return_total_ex or 0) - return_ex
+        refund_line_ex = sum(r.get("returnCommissionRefund") or 0 for r in line_results if r["marketplace"] == mp)
+        refund_total_ex = _amount_ex_vat(mp_overhead.get("return_commission_refund", 0), cfg.get("commission")) or 0
+        unmatched_return_ex -= refund_total_ex - refund_line_ex
         platform_ex = _amount_ex_vat(mp_overhead.get("platform_fee", 0), cfg.get("service"))
         ads_ex = _amount_ex_vat(mp_overhead.get("advertising", 0), cfg.get("advertising"))
         advance_ex = _amount_ex_vat(mp_overhead.get("cash_advance", 0), cfg.get("service"))
@@ -1308,6 +1409,7 @@ def _aggregate_by_marketplace(lines, line_results, overhead_by_mp, return_totals
             "grossRevenue": round(s["gross_revenue"], 2),
             "returnAmount": round(return_total_ex or 0, 2),
             "returnAmountInclVat": round(mp_overhead.get("return_amount", 0), 2),
+            "returnCommissionRefund": round(refund_total_ex, 2),
             "netRevenue": round(s["gross_revenue"] - (return_total_ex or 0), 2),
             "netHakedis": round(s["net_hakedis"], 2),
             "grossProfit": round(s["gross_profit"], 2),
@@ -1437,13 +1539,22 @@ def _manual_profit_inputs(start_ms, end_ms, marketplace_filter, vat_settings=Non
 
 def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_filter=None,
                             include_settlement_only=True, include_period_expenses=False,
-                            skip_known_order_settlements=False):
+                            skip_known_order_settlements=True):
     """marketplace_filter: None -> tüm pazaryerleri (=eski 'all'),
     'trendyol' veya 'hepsiburada' -> sadece o pazaryeri.
 
     ÖNEMLİ: 'all' artık ayrı bir motor DEĞİL — sadece filtre uygulanmamış
     hali. marketplace='trendyol' ile marketplace='all'in trendyol'a ait
     kısmı HER ZAMAN birebir aynı sayıyı üretir (aynı koddan geçiyor).
+
+    skip_known_order_settlements (02.11.2026'dan beri varsayılan True): siparişi
+    order_lines'ta ZATEN bulunan bir satışın hakedişi sonraki bir dönemde
+    düşerse o döneme sentetik satır EKLENMEZ — satış sipariş ayında sayılır
+    (order_date ekseni). Eskiden yalnızca aylık grafik/rapor True geçiyordu;
+    gösterge paneli KPI'ları, en çok satanlar ve sipariş kârı False ile aynı
+    satışı iki kez sayıyordu (Eylül 2026: +35.057 TL ciro, +8.811 TL net kâr).
+    Sentetik satır artık yalnızca siparişi DB'de hiç olmayan hakedişler için
+    üretilir.
 
     include_settlement_only: bkz. _gather_summary_inputs docstring'i. Varsayılan
     True (mevcut/dönemsel rapor davranışı korunur). 'Bugünkü satış'la aynı
@@ -1467,6 +1578,7 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
     line_results = []
     missing_cost_skus = set()
     estimated_count = 0
+    claim_pending_count = 0
     real_count = 0
     cargo_missing_orders = set()
 
@@ -1479,7 +1591,9 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             vat_settings=data["vat_settings"],
         )
         line_results.append(line_result)
-        if estimated:
+        if estimated and line_result["claimPending"]:
+            claim_pending_count += 1
+        elif estimated:
             estimated_count += 1
         else:
             real_count += 1
@@ -1560,11 +1674,18 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
     total_vat_on_sale -= vat_on_returns
     matched_return_excl = sum(r.get("returnAmountExclVat") or 0 for r in line_results)
     unmatched_return_excl = returned_excl - matched_return_excl
+    # 02.11.2026: TY iadesinde geri ödenen komisyon. Eşleşen iadelerde satır
+    # kârına zaten eklendi; eşleşmeyen kısım burada genel giderden düşülür.
+    return_commission_refund_total = sum(v.get("return_commission_refund", 0) for v in overhead_by_mp.values())
+    return_commission_refund_excl = _amount_ex_vat(return_commission_refund_total, vat_cfg.get("commission")) or 0.0
+    matched_commission_refund_excl = sum(r.get("returnCommissionRefund") or 0 for r in line_results)
+    unmatched_return_excl -= return_commission_refund_excl - matched_commission_refund_excl
     unallocated_expenses = (marketplace_service_ex + automatic_advertising_ex + cash_advance_ex
                             + expense_summary["business"] + unmatched_return_excl)
     overhead_total = marketplace_service_ex + automatic_advertising_ex + cash_advance_ex + unmatched_return_excl
     net_profit = gross_profit - unallocated_expenses
     total_vat_on_cost += commission_vat + service_vat + cargo_vat
+    total_vat_on_cost -= return_commission_refund_total - return_commission_refund_excl
     # Ads and service charges embedded in DeductionInvoices are converted with
     # their configured VAT settings; manually entered expenses contribute only
     # their configured/entered VAT amount.
@@ -1588,6 +1709,8 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             "grossRevenue": round(total_gross_revenue, 2),
             "returnAmount": round(returned_excl, 2),
             "returnAmountInclVat": round(return_total, 2),
+            "returnCommissionRefund": round(return_commission_refund_excl, 2),
+            "returnCommissionRefundInclVat": round(return_commission_refund_total, 2),
             "netRevenue": round(total_gross_revenue - returned_excl, 2),
             "netHakedis": round(total_net_hakedis, 2),
             "commission": round(total_commission, 2),
@@ -1629,6 +1752,9 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
         "data_quality": {
             "lines_with_real_settlement": real_count,
             "lines_estimated_pending_settlement": estimated_count,
+            # İade talebi açık (ClaimCreated) + settlement'sız satırlar —
+            # yukarıdaki tahmini sayıya DAHİL DEĞİL, ayrı uyarı olarak gösterilir.
+            "lines_claim_pending": claim_pending_count,
             "skus_missing_cost": sorted(missing_cost_skus),
             "orders_missing_cargo_invoice": len([o for o in cargo_missing_orders if o]),
             "vat_assumed": vat_assumed,
@@ -1667,8 +1793,22 @@ def monthly_profit(start_dt, end_dt, marketplace_filter=None):
             status = f"Tahmini ({missing_count} eksik)"
         else:
             status = "Kesin"
+        # Devam eden ay: vergi/prim (Bağ-Kur, muhtasar vb.) aylık yükümlülük
+        # olduğu için ayın 2'sinde tamamı düşülünce net kâr anlamsız biçimde
+        # eksiye düşüyordu. realNetProfit DEĞİŞMEZ (raporlar onu kullanır);
+        # grafik için geçen gün oranında tahakkuk eden ayrı alan verilir.
+        # Reklam vb. işletme giderleri gerçekleşmiş harcama -> oranlanmaz.
+        days_in_month = (next_month - month_start).days
+        in_progress = month_end < next_month - timedelta(microseconds=1) and month_end.date() < (next_month - timedelta(days=1)).date()
+        elapsed_ratio = (month_end.day / days_in_month) if in_progress else 1.0
+        taxes = t.get("taxesAndPremiums", 0) or 0
+        taxes_accrued = taxes * elapsed_ratio
         months.append({
             "month": key,
+            "inProgress": in_progress,
+            "elapsedRatio": round(elapsed_ratio, 4),
+            "taxesAndPremiumsAccrued": round(taxes_accrued, 2),
+            "realNetProfitAccrued": round((t.get("realNetProfit", 0) or 0) + (taxes - taxes_accrued), 2),
             "revenue": t.get("netRevenue", t.get("grossRevenue", 0)),
             "grossProfit": t.get("grossProfit", 0),
             "trueGrossProfit": t.get("trueGrossProfit", 0),
@@ -1729,6 +1869,8 @@ def _payout_row_delta(mp, raw_type, seller_revenue, debt, credit, commission_amo
         svc += -(seller_revenue or 0.0)
     elif cat == "return":
         ret += (debt or 0.0) - (credit or 0.0)
+        # 02.11.2026: TY iadesinde geri ödenen komisyon (negatif komisyon).
+        comm -= _return_commission_refund(mp, debt, credit, commission_amount)
     return gr, comm, svc, ret
 
 

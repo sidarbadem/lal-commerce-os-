@@ -99,7 +99,8 @@ def aggregate_products(lines):
 
 def build_report_data(period):
     start_dt, end_dt = period_range(period)
-    summary = finance_engine.compute_profit_summary(start_dt=start_dt, end_dt=end_dt, include_period_expenses=True)
+    summary = finance_engine.compute_profit_summary(start_dt=start_dt, end_dt=end_dt, include_period_expenses=True,
+                                                     skip_known_order_settlements=True)
     totals = summary["totals"]
     quality = summary["data_quality"]
     lines = summary["lines"]
@@ -117,7 +118,7 @@ def build_report_data(period):
     metrics["avgBasket"] = round(metrics["grossRevenue"] / len(orders), 2) if orders else 0.0
 
     missing_cargo = quality.get("orders_missing_cargo_invoice") or 0
-    estimated = quality.get("lines_estimated_pending_settlement") or 0
+    estimated = (quality.get("lines_estimated_pending_settlement") or 0) + (quality.get("lines_claim_pending") or 0)
     vat_assumed = bool(totals.get("vatAssumed"))
     missing_costs = quality.get("skus_missing_cost") or []
     status = "kesin" if (missing_cargo == 0 and estimated == 0 and not missing_costs and not vat_assumed) else "taslak"

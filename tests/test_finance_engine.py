@@ -1952,3 +1952,147 @@ def test_monthly_profit_orphan_settlement_still_counted_in_settlement_month(db):
                                 marketplace_filter="trendyol")
     by_month = {m["month"]: m for m in months}
     assert by_month["2026-11"]["revenue"] > 0
+
+
+# ============================================================
+# 2026-11-02: Geçen ayın satışının hakedişi bu ay düşünce iki kez sayılmamalı
+# ============================================================
+
+def test_late_settlement_of_known_order_not_double_counted_by_default(db):
+    """Sipariş geçen dönemde verildi (order_lines'ta var), Satış settlement'ı
+    bu dönemde düştü. Varsayılan compute_profit_summary (gösterge paneli KPI'ları,
+    en çok satanlar, siparişler) bu satırı bu döneme sentetik satır olarak
+    EKLEMEMELİ; satış zaten sipariş ayında sayılıyor (order_date ekseni)."""
+    now = datetime.now()
+    old_ms = int((now - timedelta(days=40)).timestamp() * 1000)
+    tx_ms = int(now.timestamp() * 1000)
+    upsert_orders([{
+        "shipment_package_id": 300, "marketplace": "trendyol", "order_number": "ONL1",
+        "order_date": old_ms, "status": "Delivered", "customer": "Test",
+        "cargo_provider": "Aras", "gross_amount": 100.0, "discount_amount": 0.0, "net_amount": 100.0,
+    }])
+    upsert_order_lines([{
+        "shipment_package_id": 300, "marketplace": "trendyol", "barcode": "SKU-LATE",
+        "merchant_sku": "SKU-LATE", "product_name": "Geç Hakediş", "quantity": 1,
+        "line_unit_price": 100.0, "commission_rate": 10.0,
+    }])
+    upsert_settlements([_settlement_row(
+        id="late1", barcode="SKU-LATE", shipment_package_id=300, order_number="ONL1",
+        raw_transaction_type="Satış", credit=100.0, commission_amount=10.0,
+        seller_revenue=90.0, transaction_date=tx_ms,
+    )])
+
+    current = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
+    assert current["totals"]["grossRevenue"] == pytest.approx(0.0)
+    assert not any(r["fromSettlementOnly"] for r in current["lines"])
+
+    original = fe.compute_profit_summary(start_dt=now - timedelta(days=41), end_dt=now - timedelta(days=39),
+                                         marketplace_filter="trendyol")
+    assert original["totals"]["grossRevenue"] == pytest.approx(round(100.0 / 1.2, 2))
+
+
+def test_settlement_for_unknown_order_still_creates_synthetic_line(db):
+    """order_lines'ta HİÇ karşılığı olmayan hakediş (sync penceresi dışındaki
+    eski sipariş) kaybolmamalı: sentetik satır olarak dönemine yazılmaya devam eder."""
+    tx_ms = int(datetime.now().timestamp() * 1000)
+    upsert_settlements([_settlement_row(
+        id="orph1", barcode="SKU-ORPH", shipment_package_id=301, order_number="ONO1",
+        raw_transaction_type="Satış", credit=120.0, commission_amount=12.0,
+        seller_revenue=108.0, transaction_date=tx_ms,
+    )])
+    summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
+    assert any(r["fromSettlementOnly"] for r in summary["lines"])
+    assert summary["totals"]["grossRevenue"] == pytest.approx(round(120.0 / 1.2, 2))
+
+
+# ============================================================
+# 2026-11-02: Trendyol iadesinde geri ödenen komisyon kâra geri eklenmeli
+# Gerçek veri: 41/41 TY 'İade' kaydında debt - commission_amount = seller_revenue
+# (ör. 1052.51 - 168.40 = 884.11) — satıcıdan iade tutarının tamamı DEĞİL,
+# komisyonu düşülmüş hali kesiliyor.
+# ============================================================
+
+def test_ty_full_return_refunds_commission_on_line(db):
+    now_ms = int(datetime.now().timestamp() * 1000)
+    _setup_line(400, "SKU-RCR", 1, 100.0, 40.0, now_ms, "ONRCR1")
+    upsert_settlements([
+        _settlement_row(id="rcr-sale", barcode="SKU-RCR", shipment_package_id=400, order_number="ONRCR1",
+                         raw_transaction_type="Satış", credit=100.0, commission_amount=10.0,
+                         seller_revenue=90.0, transaction_date=now_ms),
+        _settlement_row(id="rcr-ret", barcode="SKU-RCR", shipment_package_id=400, order_number="ONRCR1",
+                         transaction_type="Return", raw_transaction_type="İade", debt=100.0, credit=0.0,
+                         commission_amount=10.0, seller_revenue=90.0, transaction_date=now_ms),
+    ])
+    summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
+    line = summary["lines"][0]
+    # Tam iade + komisyon iadesi + maliyet geri kazanımı (kargo 0) -> net etki 0.
+    assert line["returnCommissionRefund"] == pytest.approx(round(10 / 1.2, 2))
+    assert line["profit"] == pytest.approx(0.0, abs=0.02)
+    assert summary["totals"]["netProfit"] == pytest.approx(0.0, abs=0.02)
+    assert summary["by_marketplace"]["trendyol"]["netProfit"] == pytest.approx(0.0, abs=0.02)
+
+
+def test_ty_unmatched_return_refunds_commission_in_overhead(db):
+    now_ms = int(datetime.now().timestamp() * 1000)
+    upsert_settlements([
+        _settlement_row(id="urcr-ret", barcode="SKU-NOORDER", shipment_package_id=401, order_number="ONURCR1",
+                         transaction_type="Return", raw_transaction_type="İade", debt=100.0, credit=0.0,
+                         commission_amount=10.0, seller_revenue=90.0, transaction_date=now_ms),
+    ])
+    summary = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")
+    t = summary["totals"]
+    assert t["returnAmountInclVat"] == pytest.approx(100.0)          # iade tutarı brüt kalır
+    assert t["returnCommissionRefundInclVat"] == pytest.approx(10.0)
+    assert t["netProfit"] == pytest.approx(round(-90 / 1.2, 2))      # satıcıya kesilen net 90
+
+
+def test_payout_row_net_ty_return_equals_seller_revenue():
+    assert fe._payout_row_net("trendyol", "İade", 90.0, 100.0, 0.0, 10.0) == pytest.approx(-90.0)
+    # HB'de komisyon iadesi ayrı CommissionInvoiceRefund kaydıyla gelir; Return satırı değişmez.
+    assert fe._payout_row_net("hepsiburada", "Return", None, 100.0, 0.0, None) == pytest.approx(-100.0)
+
+
+# ============================================================
+# 2026-11-02: HB tahmini komisyon — order_lines.commission_rate KDV HARİÇ
+# Gerçek veri: 329 HB satırında gerçek komisyon / ciro = commission_rate × 1,20;
+# PaymentServiceCostReflection her ay sabit %0,80.
+# ============================================================
+
+def test_hb_estimated_commission_adds_vat_and_payment_service_fee(db):
+    now_ms = int(datetime.now().timestamp() * 1000)
+    _setup_line(500, "SKU-HBEST", 1, 100.0, 40.0, now_ms, "ONHBEST1", marketplace="hepsiburada")
+    summary = fe.compute_profit_summary(days=1, marketplace_filter="hepsiburada")
+    line = summary["lines"][0]
+    assert line["estimated"] is True
+    assert line["commissionInclVat"] == pytest.approx(12.0)   # %10 × 1,20
+    assert line["serviceFeeInclVat"] == pytest.approx(0.8)    # %0,8
+    assert line["netHakedis"] == pytest.approx(100.0 - 12.0 - 0.8)
+
+
+def test_ty_estimated_commission_unchanged(db):
+    """TY commission_rate zaten gerçek komisyonla eşleşiyor (%0,2 sapma) — değişmemeli."""
+    now_ms = int(datetime.now().timestamp() * 1000)
+    _setup_line(501, "SKU-TYEST", 1, 100.0, 40.0, now_ms, "ONTYEST1")
+    line = fe.compute_profit_summary(days=1, marketplace_filter="trendyol")["lines"][0]
+    assert line["estimated"] is True
+    assert line["commissionInclVat"] == pytest.approx(10.0)
+    assert line["serviceFeeInclVat"] == pytest.approx(0.0)
+
+
+def test_monthly_profit_in_progress_month_accrues_taxes_by_elapsed_days(db):
+    """Devam eden ayda vergi/prim geçen gün oranında tahakkuk eder;
+    realNetProfit (raporların kullandığı alan) değişmez."""
+    with db.get_connection() as conn:
+        conn.execute("INSERT INTO fixed_expenses (month, label, amount) VALUES (?, ?, ?)",
+                     ("2026-11", "4B Bağ-Kur", 3000.0))
+        conn.commit()
+    months = fe.monthly_profit(start_dt=datetime(2026, 10, 1), end_dt=datetime(2026, 11, 10, 15, 0))
+    nov = next(m for m in months if m["month"] == "2026-11")
+    oct_ = next(m for m in months if m["month"] == "2026-10")
+    assert oct_["inProgress"] is False and oct_["elapsedRatio"] == 1.0
+    assert nov["inProgress"] is True
+    assert nov["elapsedRatio"] == round(10 / 30, 4)
+    assert nov["taxesAndPremiums"] == 3000.0
+    assert nov["taxesAndPremiumsAccrued"] == 1000.0
+    assert nov["realNetProfitAccrued"] == round(nov["realNetProfit"] + 2000.0, 2)
+    assert nov["realNetProfitAccrued"] == round(nov["realNetProfit"] + nov["taxesAndPremiums"] - nov["taxesAndPremiumsAccrued"], 2)

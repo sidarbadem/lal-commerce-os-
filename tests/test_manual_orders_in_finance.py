@@ -112,3 +112,32 @@ def test_cancelled_manual_order_is_not_counted(client, db):
         start_dt=datetime.now() - timedelta(days=2), end_dt=datetime.now(), marketplace_filter=None)
     assert summary["totals"]["grossRevenue"] == 0.0
     assert summary["totals"]["netProfit"] == 0.0
+
+
+def test_net_profit_month_period_includes_earlier_days_of_month(client, db):
+    """?period=month ayın 1'inden bugüne kadar olan siparişleri de sayar;
+    period verilmezse yalnızca bugün."""
+    now = datetime.now()
+    if now.day == 1:
+        pytest.skip("Ayın 1'inde 'ayın önceki günü' yok")
+    _seed_sku(db)
+    _manual(when=datetime(now.year, now.month, 1, 12, 0))
+
+    today = client.get("/api/today-net-profit", headers=auth_headers()).get_json()
+    month = client.get("/api/today-net-profit?period=month", headers=auth_headers()).get_json()
+    expected = round(1000 / 1.2 - 400 / 1.2 - 50 / 1.2 - 30 / 1.2, 2)
+    assert today["period"] == "today"
+    assert today["netProfit"] == 0
+    assert month["period"] == "month"
+    assert month["netProfit"] == expected
+    assert month["netProfitPartial"] == expected
+
+
+def test_daily_sales_has_marketplace_breakdown(client, db):
+    _seed_sku(db)
+    _manual()
+    today = datetime.now().strftime("%Y-%m-%d")
+    resp = client.get("/api/daily-sales?full_history=true", headers=auth_headers())
+    day = next(d for d in resp.get_json()["daily"] if d["date"] == today)
+    assert day["by_marketplace"] == {"manuel": 1000.0}
+    assert sum(day["by_marketplace"].values()) == day["net_amount"]

@@ -151,3 +151,61 @@ def test_order_profit_map_none_when_missing_cost_still_works(db):
     key = ("trendyol", "ONCM3")
     assert key in result
     assert result[key]["netProfit"] is None
+
+
+# --- 02.11.2026: Siparişler sayfası kâr dökümü ---
+
+def test_order_profit_map_breakdown_sums_to_net_profit(db):
+    """Kalemler (KDV hariç) ciro - komisyon - hizmet - kargo - maliyet + other = netProfit."""
+    now = datetime.now()
+    _seed_order_with_settlement(801, "OBD1", "SKU-BD1", 120.0, 44.0, now, cargo_amount=12.0)
+
+    info = _build_order_profit_map(now, now)[("trendyol", "OBD1")]
+    assert info["revenue"] == pytest.approx(100.0)
+    assert info["commission"] == pytest.approx(10.0)
+    assert info["cargo"] == pytest.approx(10.0)
+    assert info["cogs"] == pytest.approx(40.0)
+    rebuilt = (info["revenue"] - info["commission"] - info["serviceFee"]
+               - info["cargo"] - info["cogs"] + info["other"])
+    assert rebuilt == pytest.approx(info["netProfit"], abs=0.02)
+    assert info["margin"] == pytest.approx(round(info["netProfit"] / info["revenue"] * 100, 1))
+
+
+def test_summarize_profit_skips_missing_cost_orders():
+    from blueprints.order_routes import _summarize_profit
+    pm = {
+        ("trendyol", "A"): {"netProfit": 30.0, "revenue": 100.0, "commission": 10.0, "serviceFee": 0.0,
+                            "cargo": 10.0, "cogs": 50.0, "other": 0.0,
+                            "profitEstimated": False, "cargoEstimated": True},
+        ("trendyol", "B"): {"netProfit": -5.0, "revenue": 50.0, "commission": 5.0, "serviceFee": 0.0,
+                            "cargo": 10.0, "cogs": 40.0, "other": 0.0,
+                            "profitEstimated": False, "cargoEstimated": False},
+        ("trendyol", "C"): {"netProfit": None, "revenue": 999.0, "commission": 99.0, "serviceFee": 0.0,
+                            "cargo": 9.0, "cogs": None, "other": None,
+                            "profitEstimated": False, "cargoEstimated": False},
+    }
+    s = _summarize_profit(pm)
+    assert s["revenue"] == 150.0
+    assert s["netProfit"] == 25.0
+    assert s["orderCount"] == 2
+    assert s["missingCostCount"] == 1
+    assert s["lossCount"] == 1
+    assert s["estimatedCount"] == 1
+    assert s["margin"] == pytest.approx(16.7)
+
+
+def test_api_orders_profit_filter_and_sort(client):
+    from tests.conftest import auth_headers
+    now = datetime.now()
+    _seed_order_with_settlement(811, "OSF1", "SKU-SF1", 120.0, 44.0, now, cargo_amount=12.0)   # kârlı
+    _seed_order_with_settlement(812, "OSF2", "SKU-SF2", 120.0, 110.0, now, cargo_amount=12.0)  # zararlı
+
+    data = client.get("/api/orders?days=1&profit_filter=loss", headers=auth_headers()).get_json()
+    assert [o["orderNumber"] for o in data["orders"]] == ["OSF2"]
+    assert data["total"] == 1
+    assert data["orders"][0]["lines"], "sayfadaki siparişin satır detayı gelmeli"
+
+    data = client.get("/api/orders?days=1&sort=profit&dir=desc", headers=auth_headers()).get_json()
+    assert [o["orderNumber"] for o in data["orders"]][:2] == ["OSF1", "OSF2"]
+    assert data["summary"]["orderCount"] == 2
+    assert data["summary"]["lossCount"] == 1

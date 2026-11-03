@@ -30,9 +30,13 @@ hesabı üretir.
 - **Gerçek kâr/zarar motoru** (`finance_engine.py`) — komisyon, kargo,
   iade, sabit giderler ve KDV dahil edilerek ürün/gün/ay bazında net kâr
   hesaplanır; henüz settlement'ı oluşmamış siparişler için tahmini gelirle
-  düzeltme yapılır. Sipariş listesinde de her satır için tek bir **Net
-  Kâr** kolonu gösterilir (aynı siparişteki birden fazla ürün satırı
-  sipariş numarası bazında toplanarak tek rakama indirgenir).
+  düzeltme yapılır. Siparişler sayfası kâr odaklıdır: `/api/orders` her
+  sipariş için KDV hariç döküm (`revenue`, `commission`, `serviceFee`,
+  `cargo`, `cogs`, `other` = iade/düzeltme, `netProfit`, `margin`) ve dönem
+  özeti (`summary`) döner; `profit_filter` (loss / low_margin /
+  missing_cost) ve `sort` (date / profit / margin / revenue) + `dir`
+  parametreleri sayfalamadan önce sunucuda uygulanır. Aynı siparişteki
+  ürün satırları sipariş numarası bazında toplanır.
 - **Ödeme takvimi (payout calendar)** — pazaryerlerinin ödeme tarihlerini
   esas alan, resmi verilerle override edilebilen tahmini nakit akışı.
 - **Manuel + zamanlanmış senkronizasyon** — "Verileri Senkronize Et"
@@ -104,6 +108,28 @@ Celery Beat'in gece 05:00 görevi (`nightly-cargo-reconciliation`) hem de
 process'i (yukarıdaki altyapı borcu nedeniyle) sessizce ölse bile, her
 manuel "Verileri Senkronize Et" tıklaması kargo verisini kendi kendine
 tazeler. İdempotent olduğu için sık çağrılması sorun yaratmaz.
+
+**HB sipariş durumu tazeleme (02.11.2026):** HB senkronu yalnızca
+open/shipped/delivered listelerini çektiği ve bilinen siparişleri atladığı
+için iptal (`CancelledByCustomer` vb.) ve iade talebi (`ClaimCreated`)
+durumları hiç güncellenmiyordu. Artık `_run_hb_sync` her turda
+`refresh_hb_order_statuses()` çağırıyor: son 60 günün kesinleşmemiş HB
+siparişlerinin durumu sipariş detay API'sinden tazelenir (en fazla 3
+saatte bir, manuel/tam senkronda her seferinde). HB iptal durumları
+`NEVER_FULFILLED_STATUSES`'ta (kârdan çıkar). `ClaimCreated` satırlar satış
+sayılmaya devam eder ama `data_quality.lines_claim_pending` olarak "tahmini"
+sayısından ayrı raporlanır. Ayrıca HB `/transactions` OrderDate ile
+filtrelendiği için tam senkronlar (gece 03:00 dahil) finansı en az 45 gün
+geriye tarar (`_HB_FINANCE_LOOKBACK_DAYS`). Önceki 2–7 günlük pencere,
+teslimatı geç olan siparişlerin satış kaydını kaçırıyordu.
+
+**Kâr motoru korumaları (02.11.2026):** (1) Gerçek paket numarasıyla
+settlement'ı olan HB placeholder satırları (negatif id) hesaptan düşer,
+sipariş gerçek settlement ile sayılır (`_drop_settled_hb_placeholders`).
+Önceden aynı sipariş iki kez sayılıyordu. (2) Satış geliri olmayan,
+yalnızca masraf içeren settlement-only satırlar (ör. HB
+`ProcessingFeeExpense`) quantity=0 ile üretilir. Masraf sayılır, ürün
+maliyeti düşülmez.
 
 **Kalıcı kargo boşlukları (22.09.2026):** Bazı siparişler Trendyol
 tarafında HİÇBİR ZAMAN bir kargo kesinti faturasına dahil edilmeyebiliyor
@@ -259,8 +285,8 @@ endpoint adı blueprint refaktöründen sonra sessizce kırılır.
 
 | Sayfa | Route | Durum |
 |---|---|---|
-| AI Genel Bakış | `/genel-bakis` (bkz. `ai-genel-bakis.html`) | ✅ Waybill temasıyla tamamlandı — masaüstü/mobil responsive |
-| Gösterge Paneli | `/dashboard`, `/gosterge-paneli` | Mevcut, eski/legacy görsel dilde |
+| Genel Bakış (eski adıyla AI Genel Bakış) | `/genel-bakis` (bkz. `ai-genel-bakis.html`) | ✅ Waybill temasıyla tamamlandı — masaüstü/mobil responsive |
+| Detaylı Analiz (eski adıyla Gösterge Paneli) | `/dashboard`, `/gosterge-paneli` | Mevcut, eski/legacy görsel dilde |
 | Ürünler | `/urunler` | 🔧 Kart bazlı yeniden tasarım üzerinde çalışılıyor — Trendyol ürün görseli (ilk görsel), marj rozeti, tıklanınca açılan maliyet paneli. Tablo görünümü de korunacak/toggle olacak (karar aşamasında) |
 | Siparişler | `/siparisler`, `/orders` | Mevcut, eski/legacy görsel dilde |
 | Finans | `/finans` | Mevcut, eski/legacy görsel dilde |
@@ -368,6 +394,18 @@ celery -A celery_app beat --loglevel=info
 noktalar `/api/` altında sunulur (tam liste için ilgili `blueprints/*.py`
 dosyasındaki route tanımlarına bakın — route'lar `app.py`'den
 blueprint'lere taşındı).
+
+Genel Bakış sayfasının kullandığı ayrıntılar:
+
+- `daily-sales`: her gün satırında `by_marketplace` (`trendyol`, `hepsiburada`,
+  `manuel`) net tutar kırılımı döner. Endpoint `marketplace` parametresini
+  yok sayar; pazaryeri filtresi frontend'de bu kırılımla uygulanır.
+- `today-net-profit`: `?period=month` ile ay başından bugüne net kâr,
+  `?marketplace=trendyol|hepsiburada` ile tek pazaryeri. Maliyeti eksik SKU
+  varsa `netProfit` `null`, o SKU'lar hariç kısmi değer `netProfitPartial`.
+- `payout-calendar`: gerçekleşmiş banka ödemeleri ve gecikmeli tahminler
+  `start/end` dışından da döner; "önümüzdeki N gün" toplamı için istemci
+  günleri tarihe göre süzmelidir.
 
 ## Testler
 
