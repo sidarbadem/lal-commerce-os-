@@ -12,6 +12,8 @@
   const ICON_ALERT_CIRCLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px;width:15px;height:15px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
   const ICON_ALERT_TRIANGLE_SM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px;width:15px;height:15px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
 
+  let cardAlerts = [];  // %80 üstü dolu kredi kartları (/api/nakit/uyarilar)
+
   function renderAlerts(dq, items) {
     dq = dq || {};
     const missingCost = items.filter(i => !i.hasCost);
@@ -68,6 +70,14 @@
             <span class="hint">Detay →</span></span>
           </a>`);
       }
+      cardAlerts.forEach(c => {
+        parts.push(`
+          <a href="/nakit" class="alert alert-warning alert-slim alert-clickable">
+            ${ICON_ALERT_TRIANGLE_SM}
+            <span><strong>${esc(c.kart)}</strong> %${Math.round((c.dolulukOrani || 0) * 100)} dolu (${fmtTL(c.kullanilan)} / ${fmtTL(c.limit)})
+            <span class="hint">Nakit →</span></span>
+          </a>`);
+      });
       // Uyarı yoksa bant boş kalır — "her şey yolunda" şeridi dikey alan harcıyordu.
       band.innerHTML = parts.join('');
     }
@@ -80,10 +90,12 @@
   async function loadAlerts() {
     try {
       const rangeParam = rangeQueryParam();
-      const [summaryRes, marginsRes] = await Promise.all([
+      const [summaryRes, marginsRes, cardsRes] = await Promise.all([
         fetch(`/api/dashboard-summary?${rangeParam}`),
         fetch(`/api/product-performance?${rangeParam}&sort_by=profit&order=desc&limit=500`),
+        fetch('/api/nakit/uyarilar').catch(() => null),
       ]);
+      try { cardAlerts = cardsRes && cardsRes.ok ? ((await cardsRes.json()).kartlar || []) : []; } catch (e) { cardAlerts = []; }
       const summary = await summaryRes.json();
       const margins = await marginsRes.json();
       if (summary.error || margins.error) return;

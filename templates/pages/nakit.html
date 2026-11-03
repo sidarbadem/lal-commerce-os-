@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Nakit — LAL{% endblock %}
+{% block page_title %}Nakit{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/nakit.css') }}">
+{% endblock %}
+
+{% block content %}
+  <section class="lal-page-intro">
+    <p>Nakit ve borç</p>
+    <h1>Önümüzdeki 13 hafta, <strong>tek tabloda.</strong></h1>
+    <span>Giriş, çıkış ve bakiye. Bu ekrandaki kayıtlar kâr hesabına girmez.</span>
+  </section>
+
+  <div class="lal-tabs" id="nakit-tabs">
+    <button type="button" class="lal-tab is-active" data-tab="nk-akis">13 Hafta</button>
+    <button type="button" class="lal-tab" data-tab="nk-hesaplar">Hesaplar</button>
+    <button type="button" class="lal-tab" data-tab="nk-kartlar">Kartlar ve Taksitler</button>
+    <button type="button" class="lal-tab" data-tab="nk-tedarikci">Watalina</button>
+    <button type="button" class="lal-tab" data-tab="nk-planli">Planlı Ödemeler</button>
+  </div>
+
+  <!-- 13 HAFTA -->
+  <div class="lal-tab-panel is-active" id="nk-akis">
+    <div class="panel">
+      <div class="panel-header-row">
+        <div>
+          <h2>13 haftalık nakit akışı</h2>
+          <p class="panel-note" id="nk-akis-note">Yükleniyor…</p>
+        </div>
+        <label class="nk-toggle"><input type="checkbox" id="nk-only-certain"> Yalnızca kesin kalemler</label>
+      </div>
+      <div class="nk-summary" id="nk-summary"></div>
+      <div class="table-scroll">
+        <table class="nk-table">
+          <thead><tr><th>Hafta</th><th>Giriş</th><th>Çıkış</th><th>Net</th><th>Kümülatif bakiye</th></tr></thead>
+          <tbody id="nk-weeks"></tbody>
+        </table>
+      </div>
+      <p class="panel-note lal-mt-3"><span class="nk-est-swatch"></span> <em>tahmini</em> kalemler (gecikme ortalaması, gelecek satış, reklam/kargo kesintisi, ekstrelenmemiş harcama). Satıra dokun, kalemler açılsın. Kırmızı satır: bakiye minimum nakit rezervinin altında.</p>
+      <details class="lal-mt-3 nk-inputs"><summary>Tahmin girdileri</summary><div id="nk-inputs"></div></details>
+    </div>
+  </div>
+
+  <!-- HESAPLAR -->
+  <div class="lal-tab-panel" id="nk-hesaplar">
+    <div class="panel">
+      <h2>Hesap bakiyeleri</h2>
+      <p class="panel-note">Bakiyeler elle girilir; her hesabın son girişi geçerlidir. Borca ayrılmış hesaplar serbest nakde dahil edilmez. Ödeme altyapısı bakiyesi bir sonraki ödeme gününde giriş olarak sayılır.</p>
+      <div class="table-scroll"><table class="nk-table">
+        <thead><tr><th>Hesap</th><th>Tür</th><th>Bakiye</th><th>Tarih</th><th>Not</th><th>Yeni bakiye</th></tr></thead>
+        <tbody id="nk-accounts"></tbody>
+      </table></div>
+      <p class="panel-note lal-mt-3"><strong>Serbest nakit: <span id="nk-free-cash">—</span></strong></p>
+      <div class="lal-field-row lal-mt-4">
+        <div class="lal-field"><label for="nk-reserve">Minimum nakit rezervi (TL)</label><input type="number" id="nk-reserve" min="0" step="1000"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KARTLAR -->
+  <div class="lal-tab-panel" id="nk-kartlar">
+    <div id="nk-cards"></div>
+  </div>
+
+  <!-- TEDARİKÇİ -->
+  <div class="lal-tab-panel" id="nk-tedarikci">
+    <div class="panel">
+      <h2>Watalina cari</h2>
+      <p class="panel-note" id="nk-sup-note">Alışlar 01.11.2026'dan itibaren satılan satırlardan otomatik yazılır (sipariş tarihindeki maliyet, KDV dahil). İptal ve iade borcu düşürür. Vade: alım ayının ertesi ayının son günü.</p>
+      <div class="nk-summary" id="nk-sup-buckets"></div>
+      <div class="lal-field-row lal-mt-4">
+        <div class="lal-field"><label for="nk-pay-date">Ödeme tarihi</label><input type="date" id="nk-pay-date"></div>
+        <div class="lal-field"><label for="nk-pay-amount">Tutar</label><input type="number" id="nk-pay-amount" step="0.01" min="0"></div>
+        <div class="lal-field lal-field-grow"><label for="nk-pay-note">Açıklama</label><input type="text" id="nk-pay-note"></div>
+        <button class="lal-btn lal-btn-primary" id="nk-pay-add">Ödeme ekle</button>
+      </div>
+    </div>
+    <div class="panel lal-mt-4">
+      <h2>Ay sonu mutabakatı</h2>
+      <p class="panel-note">Sistemin alış hesabı ile Watalina faturası arasındaki fark. Fark otomatik düzeltilmez.</p>
+      <div class="table-scroll"><table class="nk-table">
+        <thead><tr><th>Ay</th><th>Sistem</th><th>Watalina faturası</th><th>Fark</th><th>Vade</th></tr></thead>
+        <tbody id="nk-sup-rec"></tbody>
+      </table></div>
+    </div>
+    <div class="panel lal-mt-4">
+      <h2>Hareketler</h2>
+      <div class="table-scroll"><table class="nk-table">
+        <thead><tr><th>Tarih</th><th>Tip</th><th>Tutar</th><th>Vade</th><th>Açıklama</th></tr></thead>
+        <tbody id="nk-sup-moves"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- PLANLI -->
+  <div class="lal-tab-panel" id="nk-planli">
+    <div class="panel">
+      <h2>Planlı ödemeler</h2>
+      <p class="panel-note">Yalnızca nakit akışında görünür; kâr hesabına girmez (şahsi çekiş dahil).</p>
+      <div class="table-scroll"><table class="nk-table">
+        <thead><tr><th>Açıklama</th><th>Kategori</th><th>Tutar</th><th>Tekrar</th><th>Sıradaki</th><th>Not</th><th></th></tr></thead>
+        <tbody id="nk-scheduled"></tbody>
+      </table></div>
+      <h3 class="lal-mt-4">Yeni planlı ödeme</h3>
+      <div class="lal-field-row">
+        <div class="lal-field lal-field-grow"><label for="nk-sp-desc">Açıklama</label><input type="text" id="nk-sp-desc"></div>
+        <div class="lal-field"><label for="nk-sp-cat">Kategori</label>
+          <select id="nk-sp-cat"><option value="vergi_sgk">Vergi / SGK</option><option value="borc_aile">Aile borcu</option><option value="kart">Kart</option><option value="tedarikci">Tedarikçi</option><option value="sahsi_cekis">Şahsi çekiş</option><option value="diger">Diğer</option></select></div>
+        <div class="lal-field"><label for="nk-sp-amount">Tutar</label><input type="number" id="nk-sp-amount" step="0.01" min="0"></div>
+        <div class="lal-field"><label for="nk-sp-date">İlk tarih</label><input type="date" id="nk-sp-date"></div>
+        <div class="lal-field"><label for="nk-sp-rep">Tekrar</label><select id="nk-sp-rep"><option value="yok">Yok</option><option value="aylik">Aylık</option></select></div>
+        <div class="lal-field"><label for="nk-sp-end">Bitiş (ops.)</label><input type="date" id="nk-sp-end"></div>
+        <button class="lal-btn lal-btn-primary" id="nk-sp-add">Ekle</button>
+      </div>
+    </div>
+  </div>
+  <div id="nk-msg" class="lal-form-msg is-hidden"></div>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/nakit.js') }}"></script>
+{% endblock %}
