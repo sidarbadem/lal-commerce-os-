@@ -67,3 +67,52 @@ html #net-profit-hero .hero-stat-value {
   font-size: clamp(22px, calc(100cqw / 5.8), 44px);
 }
 html #net-profit-hero .hero-stat-value { font-size: clamp(26px, calc(100cqw / 5.6), 52px); }
+
+
+html .dashboard-topic { margin-top: var(--lal-space-8); }
+html .dashboard-topic > .lal-section-title { margin-bottom: var(--lal-space-4); }
+html .dashboard-topic-performance { margin-top: var(--lal-space-10); }
+
+/* =====================================================================
+   Detaylı Analiz v2 (02.11.2026): dönem başlığı, açıklamalı kartlar,
+   cirodan net kâra şelale. Renkler token'dan; iki temada çalışır.
+   ===================================================================== */
+html .da-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; margin: var(--lal-space-2) 0 var(--lal-space-6); }
+html .da-eyebrow { margin: 0 0 8px; font: 600 12px/1.2 var(--lal-font-body); color: var(--lal-text-faint); }
+html .da-title { margin: 0; font: 600 clamp(26px, 3vw, 36px)/1.1 var(--lal-font-display); letter-spacing: -.025em; color: var(--lal-text-main); }
+html .da-summary { margin: 0; font: var(--lal-text-small); color: var(--lal-text-muted); text-align: right; max-width: 520px; }
+@media (max-width: 720px) { html .da-summary { text-align: left; } }
+
+html .hero-stat-sub { margin-top: 8px; font: 500 12px/1.4 var(--lal-font-body); color: var(--lal-text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html .hero-stat-label { padding-right: 0; }
+html .summary-grid .card .sub-note { font: 500 12px/1.4 var(--lal-font-body); color: var(--lal-text-faint); margin-top: 4px; }
+
+html .da-wf-panel { padding: var(--lal-space-5) var(--lal-space-6); }
+html .da-wf-panel .panel-note { margin: 0 0 var(--lal-space-4); }
+html .da-wf { display: flex; flex-direction: column; }
+html .da-wf-row { display: grid; grid-template-columns: minmax(150px, 260px) 1fr 120px 64px; align-items: center; gap: 16px; padding: 8px 0; border-top: 1px solid var(--lal-border-soft); }
+html .da-wf-row:first-child { border-top: 0; }
+html .da-wf-l { font: var(--lal-text-body); color: var(--lal-text-main); min-width: 0; }
+html .da-wf-l small { display: block; font: 500 11.5px/1.35 var(--lal-font-body); color: var(--lal-text-faint); }
+html .da-wf-row.is-cost .da-wf-l { padding-left: 14px; color: var(--lal-text-muted); }
+html .da-wf-row.is-total .da-wf-l { font-weight: 600; }
+html .da-wf-bar { height: 10px; border-radius: 5px; background: color-mix(in srgb, var(--lal-text-main) 6%, transparent); overflow: hidden; }
+html .da-wf-bar i { display: block; height: 100%; border-radius: 5px; min-width: 2px; background: var(--lal-text-faint); }
+html .da-wf-row.is-total .da-wf-bar i { background: color-mix(in srgb, var(--lal-text-main) 55%, transparent); }
+html .da-wf-row.is-cost .da-wf-bar i { background: color-mix(in srgb, var(--lal-red) 70%, transparent); }
+html .da-wf-row.is-gain .da-wf-bar i { background: var(--lal-green); }
+html .da-wf-row.is-end .da-wf-bar i { background: var(--lal-green); }
+html .da-wf-row.is-end.is-loss .da-wf-bar i { background: var(--lal-red); }
+html .da-wf-v { text-align: right; font: 600 14px/1.3 var(--lal-font-display); font-variant-numeric: tabular-nums; color: var(--lal-text-main); white-space: nowrap; }
+html .da-wf-row.is-cost .da-wf-v { color: var(--lal-red); font-weight: 500; }
+html .da-wf-row.is-end .da-wf-v { color: var(--lal-green); font-size: 16px; }
+html .da-wf-row.is-end.is-loss .da-wf-v { color: var(--lal-red); }
+html .da-wf-p { text-align: right; font: 500 12px/1.3 var(--lal-font-body); font-variant-numeric: tabular-nums; color: var(--lal-text-faint); }
+html .da-wf-row.is-end { border-top: 1px solid var(--lal-border); margin-top: 2px; padding-top: 10px; }
+html .da-wf-foot { margin: var(--lal-space-3) 0 0; font: 500 12px/1.4 var(--lal-font-body); color: var(--lal-text-faint); }
+html .da-wf-foot:empty { display: none; }
+@media (max-width: 720px) {
+  html .da-wf-row { grid-template-columns: 1fr auto; gap: 4px 12px; }
+  html .da-wf-bar { grid-column: 1 / -1; grid-row: 2; }
+  html .da-wf-p { display: none; }
+}

@@ -13,11 +13,11 @@
     <span class="lal-nav-eyebrow">Genel</span>
     <a class="lal-nav-item {{ 'is-active' if active_page == 'ai-genel-bakis' else '' }}" href="{{ url_for('dashboard_routes.ai_genel_bakis_page') }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
-      <span class="lal-nav-label">AI Genel Bakış</span>
+      <span class="lal-nav-label">Genel Bakış</span>
     </a>
     <a class="lal-nav-item {{ 'is-active' if active_page == 'gosterge-paneli' else '' }}" href="{{ url_for('dashboard_routes.gosterge_paneli_page') }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-      <span class="lal-nav-label">Gösterge Paneli</span>
+      <span class="lal-nav-label">Detaylı Analiz</span>
     </a>
   </nav>
 
@@ -30,15 +30,15 @@
       <span class="lal-nav-label">Finans</span>
     </a>
     <a class="lal-nav-item {{ 'is-active' if active_page == 'siparisler' else '' }}" href="{{ url_for('dashboard_routes.siparisler_page') }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
       <span class="lal-nav-label">Siparişler</span>
     </a>
     <a class="lal-nav-item {{ 'is-active' if active_page == 'paketlenecekler' else '' }}" href="{{ url_for('paketlenecekler_routes.paketlenecekler_page') }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
       <span class="lal-nav-label">Paketlenecekler</span>
     </a>
     <a class="lal-nav-item {{ 'is-active' if active_page == 'urunler' else '' }}" href="{{ url_for('dashboard_routes.urunler_page') }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 5.5 19h13z"/><path d="M12 12h6.5L22 21H2l3.5-9z" opacity="0"/><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
       <span class="lal-nav-label">Ürünler</span>
     </a>
     <a class="lal-nav-item {{ 'is-active' if active_page == 'stok' else '' }}" href="{{ url_for('dashboard_routes.stok_page') }}">

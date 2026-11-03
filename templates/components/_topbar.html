@@ -1,12 +1,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/topbar-editorial.css') }}">
 <header class="lal-topbar">
   <div>
-    <div class="lal-topbar-title">{% block page_title %}LAL Commerce OS{% endblock %}</div>
-    <div class="sub" id="env-label">Bağlanılıyor…</div>
+    <div class="lal-topbar-title">{{ lal_page_title }}</div>
+    <div class="sub is-hidden" id="env-label"></div>
     <div class="sub is-hidden" id="last-sync-label"></div>
   </div>
   <div class="lal-topbar-controls controls">
-    <button class="lal-theme-toggle" id="lal-theme-toggle" type="button" aria-label="Açık temaya geç" aria-pressed="false">Açık tema</button>
+    <button class="lal-theme-toggle" id="lal-theme-toggle" type="button" aria-label="Açık temaya geç" title="Açık temaya geç" aria-pressed="false"></button>
     <div class="mp-switch" id="mp-switch" role="tablist">
       <button type="button" class="mp-switch-btn active" data-mp="all">Tümü</button>
       <button type="button" class="mp-switch-btn" data-mp="trendyol">Trendyol</button>

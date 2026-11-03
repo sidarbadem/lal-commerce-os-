@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Gösterge Paneli — LAL{% endblock %}
-{% block page_title %}Gösterge Paneli{% endblock %}
+{% block title %}Detaylı Analiz — LAL{% endblock %}
+{% block page_title %}Detaylı Analiz{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/monthly-profit-chart.css') }}">
@@ -11,66 +11,65 @@
   <div id="summary-loading" class="loading">Veriler yükleniyor…</div>
   <div id="summary-content" class="is-hidden">
 
-    <section class="lal-command-greeting">
+    <section class="da-head">
       <div>
-        <p>Bugünün özeti</p>
-        <h1>Hoş geldin, <strong>Sidar.</strong></h1>
+        <p class="da-eyebrow" id="da-period-label">Dönem</p>
+        <h1 class="da-title" id="da-period-range">–</h1>
       </div>
-      <span>Mağazan sağlam ilerliyor. Bugün odaklanman gereken iki hareket var.</span>
+      <p class="da-summary" id="da-period-summary"></p>
     </section>
 
-    <h2 class="lal-section-title">Dönem özeti</h2>
     <div class="hero-row">
       <div class="hero-stat" id="net-profit-hero">
-        <div class="hero-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></div>
-        <div>
-          <div class="hero-stat-label">Net Kâr <span class="hint is-hidden" id="stat-net-profit-cargo-hint" title="">⚠</span></div>
-          <div class="hero-stat-value" id="stat-net-profit">–</div>
-        </div>
+        <div class="hero-stat-label">Net Kâr <span class="hint is-hidden" id="stat-net-profit-cargo-hint" title="">⚠</span></div>
+        <div class="hero-stat-value" id="stat-net-profit">–</div>
+        <div class="hero-stat-sub" id="stat-net-profit-sub" title="Komisyon, hizmet bedeli, kargo, ürün maliyeti, iade ve dönemsel kesintiler düşülmüş; vergi ve Bağ-Kur primi öncesi.">vergi ve prim öncesi</div>
       </div>
       <div class="hero-stat neutral">
-        <div class="hero-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg></div>
-        <div>
-          <div class="hero-stat-label">Ciro</div>
-          <div class="hero-stat-value" id="stat-gross-revenue">–</div>
-        </div>
+        <div class="hero-stat-label">Ciro</div>
+        <div class="hero-stat-value" id="stat-gross-revenue">–</div>
+        <div class="hero-stat-sub" id="stat-gross-revenue-sub">KDV hariç</div>
       </div>
       <div class="hero-stat neutral">
-        <div class="hero-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg></div>
-        <div>
-          <div class="hero-stat-label">Net Hakediş <span class="hint" title="Ciro − Komisyon − Hizmet Bedeli">ⓘ</span></div>
-          <div class="hero-stat-value" id="stat-revenue">–</div>
-        </div>
+        <div class="hero-stat-label">Net Hakediş <span class="hint" title="Pazaryerinin hesabına geçireceği tutar: KDV dahil satış − komisyon − hizmet bedeli. Ciro KDV hariç olduğu için hakediş cirodan büyük görünebilir.">ⓘ</span></div>
+        <div class="hero-stat-value" id="stat-revenue">–</div>
+        <div class="hero-stat-sub">KDV dahil · hesaba geçecek</div>
       </div>
       <div class="hero-stat neutral">
-        <div class="hero-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/></svg></div>
-        <div>
-          <div class="hero-stat-label">Brüt Kâr</div>
-          <div class="hero-stat-value" id="stat-gross-profit">–</div>
-        </div>
+        <div class="hero-stat-label">Brüt Kâr <span class="hint" title="Ciro − ürün maliyeti (KDV hariç). Komisyon ve kargo henüz düşülmemiştir.">ⓘ</span></div>
+        <div class="hero-stat-value" id="stat-gross-profit">–</div>
+        <div class="hero-stat-sub" id="stat-gross-profit-sub">ciro − ürün maliyeti</div>
       </div>
     </div>
 
-    <h2 class="lal-section-title">Giderler, kesintiler ve operasyon</h2>
-    <div class="summary-grid">
-      <div class="card"><div class="label">Bugünün Siparişi</div><div class="value" id="today-order-count">–</div></div>
-      <div class="card"><div class="label">Toplam Sipariş</div><div class="value" id="stat-orders">–</div></div>
-      <div class="card"><div class="label">Ortalama Marj <span class="hint" title="Net Kâr / Ciro">ⓘ</span></div><div class="value" id="stat-avg-margin">–</div></div>
-      <div class="card"><div class="label">Komisyon</div><div class="value red" id="stat-commission">–</div></div>
-      <div class="card"><div class="label">Hizmet Bedeli</div><div class="value red" id="stat-service-fee">–</div></div>
-      <div class="card"><div class="label">Stopaj</div><div class="value red" id="stat-stoppage">–</div></div>
-      <div class="card"><div class="label">Platform Hizmet Bedeli / Kesinti (dönemsel)</div><div class="value red" id="stat-platform-fee">–</div></div>
-      <div class="card"><div class="label">Erken Ödeme Maliyeti</div><div class="value red" id="stat-cash-advance">–</div></div>
-      <div class="card"><div class="label">İade Tutarı <span class="hint" title="Net Kâr'dan düşülmüştür">ⓘ</span></div><div class="value red" id="stat-return">–</div><div class="sub-note" id="stat-return-count"></div></div>
-      <div class="card"><div class="label">Dönem İçi Hakediş Ödemesi <span class="hint" title="Kasaya bu dönem içinde fiilen geçen tutar">ⓘ</span></div><div class="value" id="stat-payment-order">–</div></div>
-    </div>
+    <section class="dashboard-topic">
+      <h2 class="lal-section-title">Sipariş ve satış</h2>
+      <div class="summary-grid da-grid">
+        <div class="card"><div class="label">Bugünün Siparişi</div><div class="value" id="today-order-count">–</div></div>
+        <div class="card"><div class="label">Toplam Sipariş</div><div class="value" id="stat-orders">–</div><div class="sub-note" id="stat-orders-sub"></div></div>
+        <div class="card"><div class="label">Net Marj <span class="hint" title="Net Kâr / Ciro (ikisi de KDV hariç)">ⓘ</span></div><div class="value" id="stat-avg-margin">–</div></div>
+        <div class="card"><div class="label">İade Tutarı <span class="hint" title="Net Kâr'dan düşülmüştür">ⓘ</span></div><div class="value red" id="stat-return">–</div><div class="sub-note" id="stat-return-count"></div></div>
+        <div class="card is-hidden" id="stat-payment-order-card"><div class="label">Dönem İçi Hakediş Ödemesi <span class="hint" title="Kasaya bu dönem içinde fiilen geçen tutar">ⓘ</span></div><div class="value" id="stat-payment-order">–</div></div>
+      </div>
+    </section>
 
-    <!-- === FİNANSAL PERFORMANS (en önemli grafik, sayfanın en üstünde) === -->
+    <section class="dashboard-topic">
+      <h2 class="lal-section-title">Cirodan net kâra</h2>
+      <div class="panel da-wf-panel">
+        <p class="panel-note">Seçili dönemde cironun nereye gittiği. Tüm tutarlar KDV hariç; yüzdeler ciroya oranıdır.</p>
+        <div class="da-wf" id="da-waterfall" role="table" aria-label="Cirodan net kâra kalem kalem döküm"></div>
+        <p class="da-wf-foot" id="da-wf-foot"></p>
+      </div>
+    </section>
+
+    <section class="dashboard-topic dashboard-topic-performance">
+    <h2 class="lal-section-title">Aylık performans</h2>
+    <!-- === FİNANSAL PERFORMANS === -->
     <div class="panel mpc-panel">
       <div class="mpc-head">
         <div>
           <h2>Finansal Performans</h2>
-          <p class="panel-note">Cirodan gerçek net kâra kadar aylık finansal performans. Bu grafik yukarıdaki tarih filtresinden bağımsızdır — her zaman tüm geçmişi gösterir.</p>
+          <p class="panel-note">Aylık ciro, brüt kâr ve vergi/prim sonrası net kâr. Tarih filtresinden bağımsızdır. Devam eden ayda vergi ve Bağ-Kur primi geçen gün oranında düşülür.</p>
         </div>
         <div class="mpc-head-right">
           <span id="monthlyProfitInProgressBadge" class="mpc-badge is-hidden"></span>
@@ -88,7 +87,7 @@
       </div>
       <div id="monthlyProfitTableWrap" class="mpc-table-wrap is-hidden">
         <table class="mpc-table">
-          <thead><tr><th>Ay</th><th>Ciro</th><th>Brüt Kâr</th><th>Net Kâr <span id="mpcNetHint" class="mpc-info is-hidden" tabindex="0" title="">ⓘ</span></th><th>Net Marj</th></tr></thead>
+          <thead><tr><th>Ay</th><th>Ciro</th><th>Brüt Kâr</th><th>Net Kâr (vergi sonrası) <span id="mpcNetHint" class="mpc-info is-hidden" tabindex="0" title="">ⓘ</span></th><th>Net Marj</th></tr></thead>
           <tbody id="monthlyProfitTableBody"></tbody>
         </table>
       </div>
@@ -112,6 +111,7 @@
       </div></div>
       <div class="mpx-wrap mpx-wrap-rings"><canvas id="mpxRings" role="img" aria-label="Seçili ayın ciro, brüt kâr ve net kâr halkaları"></canvas></div>
     </div>
+    </section>
   </div>
 
   <!-- === DETAYLI GRAFİKLER (Faz 5: artık accordion değil, sayfanın sabit bir bölümü) === -->

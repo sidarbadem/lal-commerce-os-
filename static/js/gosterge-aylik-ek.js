@@ -34,8 +34,9 @@
   }
   function al(h, a) { var c = rgb(h); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
   var K = function (v) { return '₺' + Math.round(v).toLocaleString('tr-TR'); };
-  var S = function (v) { return Math.abs(v) >= 1000 ? '₺' + Math.round(v / 1000) + 'B' : '₺' + Math.round(v); };
-  var pct = function (a, b) { return b > 0 ? (a / b * 100).toFixed(1).replace('.', ',') + '%' : '–'; };
+  // "B" Türkçede milyar gibi okunuyordu -> K (bin). Yüzdeler Türkçe: %12,3
+  var S = function (v) { return Math.abs(v) >= 1000 ? '₺' + Math.round(v / 1000) + 'K' : '₺' + Math.round(v); };
+  var pct = function (a, b) { return b > 0 ? '%' + (a / b * 100).toFixed(1).replace('.', ',') : '–'; };
   function F(w, s) { return (w || '') + ' ' + (s || 13) + 'px ' + FONT; }
 
   document.addEventListener('lal:monthly-profit', function (e) {
@@ -44,7 +45,7 @@
       return {
         short: d.toLocaleDateString('tr-TR', { month: 'short' }) + ' ' + String(p[0]).slice(2),
         long: d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }),
-        r: m.rev, g: m.gross, n: m.net,
+        r: m.rev, g: m.gross, n: m.net, live: !!m.inProgress,
       };
     });
     if (sel < 0 || sel >= data.length) sel = data.length - 1;
@@ -117,7 +118,7 @@
           cc.fillStyle = fg; cc.font = F('700', w3 < 150 ? 18 : 24); cc.fillText(K(q[1]), x + 14, yy + 52);
           cc.fillStyle = mu; cc.font = F('', 12);
           var sub = '';
-          if (s === 0) { if (prev && prev.r > 0) { var dp = (d.r / prev.r - 1) * 100; sub = (dp >= 0 ? '▲ ' : '▼ ') + Math.abs(dp).toFixed(1).replace('.', ',') + '% önceki aya göre'; } }
+          if (s === 0) { if (d.live) sub = 'Ay devam ediyor'; else if (prev && prev.r > 0) { var dp = (d.r / prev.r - 1) * 100; sub = (dp >= 0 ? '▲ %' : '▼ %') + Math.abs(dp).toFixed(1).replace('.', ',') + ' önceki aya göre'; } }
           else if (s === 1) sub = 'Brüt marj ' + pct(d.g, d.r);
           else sub = 'Net marj ' + pct(d.n, d.r);
           cc.fillText(sub, x + 14, yy + 72);

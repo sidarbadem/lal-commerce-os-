@@ -1,0 +1,117 @@
+/* Siparişler — kâr odaklı görünüm (02.11.2026). Yalnızca token kullanır,
+   açık/koyu tema tokens.css'ten gelir. */
+
+/* ---------- Dönem özeti ---------- */
+.op-summary { margin-bottom: var(--lal-space-5); }
+.op-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.35fr); gap: var(--lal-space-3); }
+.op-kpi {
+  display: grid; gap: 4px; padding: var(--lal-space-4);
+  background: var(--lal-surface); border: 1px solid var(--lal-border-soft); border-radius: var(--lal-radius-lg);
+}
+.op-kpi span { font: var(--lal-text-micro); color: var(--lal-text-muted); }
+.op-kpi b { font: 600 22px/1.2 var(--lal-font-display); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.op-kpi small { font: var(--lal-text-micro); color: var(--lal-text-faint); font-variant-numeric: tabular-nums; }
+.op-kpi .op-sk { display: inline-block; width: 70%; height: 20px; }
+.op-kpi-hero { background: var(--lal-surface-2); border-color: var(--lal-border); }
+.op-kpi-hero b { font-size: 28px; }
+.op-kpi-hero b.pos { color: var(--lal-green); }
+.op-kpi-hero b.neg { color: var(--lal-red); }
+
+.op-split { display: flex; height: 10px; margin-top: var(--lal-space-4); border-radius: var(--lal-radius-full); overflow: hidden; background: var(--lal-surface-2); gap: 2px; }
+.op-split i { display: block; height: 100%; min-width: 2px; transition: flex-grow var(--lal-dur-base) var(--lal-ease-standard); }
+.op-split-legend { display: flex; flex-wrap: wrap; gap: var(--lal-space-2) var(--lal-space-5); margin-top: var(--lal-space-2); font: var(--lal-text-micro); color: var(--lal-text-muted); }
+.op-split-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.op-split-legend i { width: 8px; height: 8px; border-radius: 2px; }
+.op-split-legend b { color: var(--lal-text-main); font-weight: 600; font-variant-numeric: tabular-nums; }
+.op-summary-note { margin: var(--lal-space-2) 0 0; font: var(--lal-text-micro); color: var(--lal-text-faint); }
+.op-summary-note:empty { display: none; }
+
+/* Gider renkleri — şerit, lejant ve şelale ortak */
+.c-cogs   { background: var(--lal-text-faint); }
+.c-comm   { background: var(--lal-violet); }
+.c-cargo  { background: var(--lal-amber); }
+.c-other  { background: var(--lal-red); }
+.c-profit { background: var(--lal-green); }
+
+/* ---------- Kâr filtreleri ---------- */
+.op-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lal-space-2); margin: var(--lal-space-3) 0 var(--lal-space-2); }
+.op-chip {
+  padding: 5px 12px; border-radius: var(--lal-radius-full); border: 1px solid var(--lal-border-soft);
+  background: transparent; color: var(--lal-text-muted); font: var(--lal-text-small); cursor: pointer;
+  transition: background var(--lal-dur-fast) var(--lal-ease-standard), color var(--lal-dur-fast);
+}
+.op-chip:hover { background: var(--lal-hover-wash); color: var(--lal-text-main); }
+.op-chip.is-active { background: var(--lal-text-main); color: var(--lal-bg); border-color: var(--lal-text-main); }
+.op-chip em { font-style: normal; font-variant-numeric: tabular-nums; opacity: .7; margin-left: 2px; }
+.op-chip em:empty { display: none; }
+.op-chips-note { margin-left: auto; font: var(--lal-text-micro); color: var(--lal-text-faint); }
+
+/* ---------- Tablo ---------- */
+.op-table-wrap { overflow-x: auto; }
+.op-table { width: 100%; border-collapse: collapse; }
+.op-table th { font: var(--lal-text-micro); color: var(--lal-text-muted); text-align: left; padding: 8px 10px; white-space: nowrap; border-bottom: 1px solid var(--lal-border-soft); }
+.op-table td { padding: 10px; border-bottom: 1px solid var(--lal-border-soft); vertical-align: middle; }
+.op-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.op-table tr.order-row { cursor: pointer; transition: background var(--lal-dur-fast); }
+.op-table tr.order-row:hover { background: var(--lal-hover-wash); }
+.op-table tr.order-row.is-open { background: var(--lal-surface-2); }
+.op-table td.op-caret { width: 18px; color: var(--lal-text-faint); font-size: 10px; padding-right: 0; }
+.op-sort { all: unset; cursor: pointer; }
+.op-sort:hover { color: var(--lal-text-main); }
+.op-sort[data-dir]::after { content: ' ↓'; color: var(--lal-text-main); }
+.op-sort[data-dir="asc"]::after { content: ' ↑'; }
+.op-sort:focus-visible { outline: 2px solid var(--lal-focus-ring); border-radius: 4px; }
+
+.op-product { display: flex; align-items: center; gap: 10px; min-width: 240px; max-width: 360px; }
+.op-thumb { width: 40px; height: 40px; flex: none; border-radius: var(--lal-radius-md); object-fit: cover; background: var(--lal-surface-2); border: 1px solid var(--lal-border-soft); display: flex; align-items: center; justify-content: center; color: var(--lal-text-faint); font-size: 10px; }
+.op-product-text { min-width: 0; display: grid; gap: 2px; }
+.op-product-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-product-meta { font: var(--lal-text-micro); color: var(--lal-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.op-cost { color: var(--lal-text-muted); }
+.op-sub { display: block; font: var(--lal-text-micro); color: var(--lal-text-faint); }
+.op-profit { font-weight: 600; }
+.op-profit.pos { color: var(--lal-green); }
+.op-profit.neg { color: var(--lal-red); }
+.op-est { color: var(--lal-amber); font-weight: 600; }
+.op-missing { font: var(--lal-text-micro); color: var(--lal-amber); }
+
+.op-margin { display: inline-block; min-width: 46px; padding: 2px 8px; border-radius: var(--lal-radius-full); font: 600 12px/1.5 var(--lal-font-body); text-align: center; font-variant-numeric: tabular-nums; }
+.op-margin.good { background: var(--lal-green-dim); color: var(--lal-green); }
+.op-margin.mid  { background: var(--lal-amber-dim); color: var(--lal-amber); }
+.op-margin.bad  { background: var(--lal-red-dim); color: var(--lal-red); }
+.op-margin.none { color: var(--lal-text-faint); }
+
+/* ---------- Açılır döküm ---------- */
+.op-table tr.detail-row td { padding: 0; background: var(--lal-surface-2); }
+.op-detail { display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 1fr); gap: var(--lal-space-6); padding: var(--lal-space-5) var(--lal-space-6) var(--lal-space-6); }
+.op-detail h4 { margin: 0 0 var(--lal-space-3); font: var(--lal-text-micro); color: var(--lal-text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.op-wf { display: grid; gap: 6px; }
+.op-wf-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 92px 52px; align-items: center; gap: 10px; font: var(--lal-text-small); }
+.op-wf-row .lbl { color: var(--lal-text-muted); }
+.op-wf-row .bar { height: 8px; border-radius: 4px; background: var(--lal-bg); overflow: hidden; }
+.op-wf-row .bar i { display: block; height: 100%; border-radius: 4px; }
+.op-wf-row .amt { text-align: right; font-variant-numeric: tabular-nums; }
+.op-wf-row .pct { text-align: right; font: var(--lal-text-micro); color: var(--lal-text-faint); font-variant-numeric: tabular-nums; }
+.op-wf-row.total { border-top: 1px solid var(--lal-border); padding-top: 8px; margin-top: 2px; font-weight: 600; }
+.op-wf-row.total .lbl { color: var(--lal-text-main); }
+.op-wf-note { margin-top: var(--lal-space-3); font: var(--lal-text-micro); color: var(--lal-amber); }
+
+.op-meta { display: flex; flex-wrap: wrap; gap: var(--lal-space-2) var(--lal-space-5); margin-bottom: var(--lal-space-4); font: var(--lal-text-small); color: var(--lal-text-muted); }
+.op-meta b { color: var(--lal-text-main); font-weight: 500; }
+.op-lines { width: 100%; border-collapse: collapse; font: var(--lal-text-small); }
+.op-lines th { text-align: left; font: var(--lal-text-micro); color: var(--lal-text-muted); padding: 6px 8px; border-bottom: 1px solid var(--lal-border-soft); }
+.op-lines td { padding: 6px 8px; border-bottom: 1px solid var(--lal-border-soft); }
+.op-lines .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1100px) {
+  .op-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .op-kpi-hero { grid-column: 1 / -1; }
+  .op-detail { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .op-kpis { grid-template-columns: 1fr; }
+  .op-chips-note { margin-left: 0; width: 100%; }
+  .op-wf-row { grid-template-columns: 100px minmax(0, 1fr) 84px; }
+  .op-wf-row .pct { display: none; }
+}

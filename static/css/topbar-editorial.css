@@ -1,7 +1,8 @@
 html .lal-topbar-controls { display: flex; align-items: center; gap: var(--lal-space-2); }
 
 html .lal-theme-toggle {
-  height: 32px; padding: 0 var(--lal-space-3); border: 1px solid var(--lal-border-soft); border-radius: var(--lal-radius-md);
+  display: inline-grid; place-items: center; width: 32px;
+  height: 32px; padding: 0; border: 1px solid var(--lal-border-soft); border-radius: var(--lal-radius-md);
   background: var(--lal-surface-2); color: var(--lal-text-muted); cursor: pointer;
   font: var(--lal-text-small); letter-spacing: 0; text-transform: none;
   transition: color var(--lal-dur-fast) ease, background var(--lal-dur-fast) ease;
@@ -94,3 +95,15 @@ html #alerts-band a:hover, html #alerts-band button:hover { text-decoration: und
 @media (prefers-reduced-motion: reduce) {
   .mp-thumb, .lal-dd-menu, .lal-dd-btn svg, html .lal-topbar .lal-btn-primary { transition: none !important; }
 }
+
+/* Bilgi amaçlı (aksiyon gerektirmeyen) uyarı: tek satır, ince, dikkat çekmeyen */
+html #alerts-band .alert.alert-slim {
+  padding: 6px 12px; min-height: 0; align-items: center; gap: 8px;
+  background: transparent; border-color: var(--lal-border-soft); color: var(--lal-text-muted);
+  font: var(--lal-text-micro); text-transform: none; letter-spacing: 0;
+}
+html #alerts-band .alert.alert-slim svg { width: 14px; height: 14px; flex: none; }
+html #alerts-band .alert.alert-slim > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+html #alerts-band .alert.alert-slim strong { color: var(--lal-text-main); font-weight: 600; }
+html #alerts-band .alert.alert-slim .hint { display: inline; margin-left: 6px; color: var(--lal-text-faint); }
+html #alerts-band:empty { display: none; }

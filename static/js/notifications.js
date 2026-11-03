@@ -9,10 +9,12 @@
   var KINDS = {
     order: { svg: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>' },
     review: { svg: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>' },
+    order_cancelled: { svg: '<path d="M18 6 6 18M6 6l12 12"/><circle cx="12" cy="12" r="10"/>' },
+    order_prepared: { svg: '<path d="m5 12 4 4L19 6"/><path d="M21 12a9 9 0 1 1-5.3-8.2"/>' },
     profit_final: { svg: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>' }
   };
   var BELL = '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>';
-  var FILTERS = [['all', 'Tümü'], ['order', 'Sipariş'], ['review', 'Yorum'], ['profit_final', 'Net kâr']];
+  var FILTERS = [['all', 'Tümü'], ['order', 'Sipariş'], ['order_cancelled', 'İptal'], ['order_prepared', 'Hazırlandı'], ['review', 'Yorum'], ['profit_final', 'Net kâr']];
   var MP = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada' };
   var money = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' });
 
@@ -47,7 +49,7 @@
   }
   function playFor(list) {
     for (var i = 0; i < list.length; i++) {
-      if (list[i].kind === 'order') { playSound(); return; }
+      if (list[i].kind === 'order' || list[i].kind === 'order_cancelled') { playSound(); return; }
     }
   }
   document.addEventListener('pointerdown', unlockAudio);
@@ -177,9 +179,19 @@
     var d = n.detail || {};
     var shown = 0;
     (d.orders || []).forEach(function (o) {
+      if (n.kind !== 'order') return;
       var r = el('div', 'lal-nrow');
       r.appendChild(el('span', 'lal-nmp is-' + (o.marketplace || ''), MP[o.marketplace] || o.marketplace || ''));
       r.appendChild(el('span', 'lal-nrow-main', o.order_number || '-'));
+      if (typeof o.net_amount === 'number') r.appendChild(el('span', 'lal-nrow-end', money.format(o.net_amount)));
+      box.appendChild(r);
+      shown++;
+    });
+    (d.orders || []).forEach(function (o) {
+      if (n.kind !== 'order_cancelled' && n.kind !== 'order_prepared') return;
+      var r = el('div', 'lal-nrow');
+      r.appendChild(el('span', 'lal-nmp is-' + (o.marketplace || ''), MP[o.marketplace] || o.marketplace || ''));
+      r.appendChild(el('span', 'lal-nrow-main', (o.order_number || '-') + ' · ' + (o.status || 'iptal')));
       if (typeof o.net_amount === 'number') r.appendChild(el('span', 'lal-nrow-end', money.format(o.net_amount)));
       box.appendChild(r);
       shown++;
@@ -231,7 +243,7 @@
     if (!shown.length) {
       var em = el('div', 'lal-nempty');
       em.appendChild(el('div', 'lal-nempty-title', 'Henüz bildirim yok'));
-      em.appendChild(el('div', 'lal-nempty-sub', 'Yeni sipariş, yorum ve kesinleşen net kâr burada görünecek.'));
+      em.appendChild(el('div', 'lal-nempty-sub', 'Yeni sipariş, iptal, yorum ve kesinleşen net kâr burada görünecek.'));
       list.appendChild(em);
       return;
     }

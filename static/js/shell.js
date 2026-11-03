@@ -11,7 +11,7 @@
 const fmtTL = (n) => n === null || n === undefined ? '–' : new Intl.NumberFormat('tr-TR', {style:'currency', currency:'TRY', maximumFractionDigits: 0}).format(n);
 const fmtTL2 = (n) => n === null || n === undefined ? '—' : '₺' + Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtNum = (n) => n === null || n === undefined ? '–' : new Intl.NumberFormat('tr-TR').format(n);
-const fmtPct = (n) => n === null || n === undefined ? '–' : (n * 100).toFixed(1) + '%';
+const fmtPct = (n) => n === null || n === undefined || !isFinite(n) ? '–' : '%' + (n * 100).toFixed(1).replace('.', ',');
 const fmtDateShort = (d) => { if (!d) return '–'; const parsed = new Date(d); return isNaN(parsed) ? '–' : parsed.toLocaleDateString('tr-TR', {day:'2-digit', month:'short'}); };
 function fmtDateTime(ms) { if (!ms) return '—'; const d = new Date(ms); return d.toLocaleDateString('tr-TR') + ' ' + d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }); }
 
@@ -38,9 +38,14 @@ function applyTheme(theme) {
   document.documentElement.dataset.lalTheme = isLight ? 'light' : 'dark';
   const btn = document.getElementById('lal-theme-toggle');
   if (btn) {
-    btn.textContent = isLight ? 'Koyu tema' : 'Açık tema';
+    // İkon, geçilecek temayı gösterir: açıktayken ay, koyudayken güneş.
+    btn.innerHTML = isLight
+      ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41m11.32-11.32 1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/></svg>';
+    const label = isLight ? 'Koyu temaya geç' : 'Açık temaya geç';
     btn.setAttribute('aria-pressed', String(isLight));
-    btn.setAttribute('aria-label', isLight ? 'Koyu temaya geç' : 'Açık temaya geç');
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
   }
   // Canvas tabanlı grafikler CSS değişkenlerini otomatik izleyemez (renkler JS'e
   // string olarak geçiyor) — tema değiştiğinde ilgilenen component'ler bu event'i
@@ -161,10 +166,18 @@ async function checkConfig() {
   if (!data.configured) {
     safeDisplay('config-warning', 'flex');
     safeText('env-label', 'Yapılandırma bekleniyor');
+    document.getElementById('env-label')?.classList.remove('is-hidden');
     return false;
   }
   safeDisplay('config-warning', 'none');
-  safeText('env-label', `Ortam: ${data.env} · Satıcı ID: ${data.supplier_id}`);
+  // Canlı ortamda bu satır bilgi taşımıyor; yalnızca PROD dışı ortamda uyarı olarak görünür.
+  const envEl = document.getElementById('env-label');
+  if (envEl) {
+    const isProd = String(data.env || '').toUpperCase() === 'PROD';
+    envEl.textContent = isProd ? '' : `Ortam: ${data.env} · Satıcı ID: ${data.supplier_id}`;
+    envEl.title = `Ortam: ${data.env} · Satıcı ID: ${data.supplier_id}`;
+    envEl.classList.toggle('is-hidden', isProd);
+  }
   return true;
 }
 
@@ -177,23 +190,23 @@ async function loadLastSyncInfo() {
     const data = await res.json();
     const ts = data.finishedAt || data.finished_at || data.lastSyncAt || data.last_sync_at
       || data.updatedAt || data.updated_at || data.timestamp || null;
-    if (data.status === 'running') { el.style.display = 'none'; return; }
+    if (data.status === 'running') { el.classList.add('is-hidden'); return; }
     if (ts) {
-      const t = typeof ts === 'number' ? ts : Date.parse(ts);
+      const t = typeof ts === 'number' ? ts : Date.parse(String(ts).replace(' ', 'T'));
       if (!isNaN(t)) {
         el.textContent = `Son senkronizasyon: ${fmtDateTime(t)}`;
-        el.style.display = 'block';
+        el.classList.remove('is-hidden');
         return;
       }
     }
     if (data.message && data.status && data.status !== 'idle') {
       el.textContent = `Son senkronizasyon: ${data.message}`;
-      el.style.display = 'block';
+      el.classList.remove('is-hidden');
       return;
     }
-    el.style.display = 'none';
+    el.classList.add('is-hidden');
   } catch (e) {
-    el.style.display = 'none';
+    el.classList.add('is-hidden');
   }
 }
 

@@ -35,6 +35,8 @@
   {% include "components/_sidebar.html" %}
 
   <div class="lal-main">
+    {# Include edilen şablonda {% block %} alt sayfadan dolmaz; başlık burada yakalanıp değişkenle geçiliyor. #}
+    {% set lal_page_title %}{% block page_title %}LAL Commerce OS{% endblock %}{% endset %}
     {% include "components/_topbar.html" %}
 
     <main class="lal-page-content">

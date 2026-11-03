@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}AI Genel Bakış — LAL{% endblock %}
-{% block page_title %}AI Genel Bakış{% endblock %}
+{% block title %}Genel Bakış — LAL{% endblock %}
+{% block page_title %}Genel Bakış{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -80,8 +80,8 @@
   @media (max-width: 720px) { .ai-sb { gap: var(--lal-space-4); } .ai-sb-m .v { font-size: 17px; } .ai-sb-chip { display: none; } }
 
   /* Brifing satırları: önem noktası */
-  .ai2-brief-line { position: relative; padding-left: 18px; }
-  .ai2-brief-line::before { content: ""; position: absolute; left: 0; top: .6em; width: 8px; height: 8px; border-radius: 50%; background: var(--lal-text-faint); }
+  .ai2-brief-line { position: relative; padding-left: 18px; line-height: 1.5; }
+  .ai2-brief-line::before { content: ""; position: absolute; left: 0; top: calc(11px + .75em - 4px); width: 8px; height: 8px; border-radius: 50%; background: var(--lal-text-faint); }
   .ai2-brief-line.tone-down::before { background: var(--lal-red); }
   .ai2-brief-line.tone-up::before, .ai2-brief-line.tone-ok::before { background: var(--lal-green); }
   .ai2-brief-line.tone-warn::before { background: var(--lal-amber); }
@@ -102,7 +102,7 @@
      flex item olarak içeride kendi grid'ini kurar. */
   .ai2-layout {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: minmax(0, 1fr) 340px;
     gap: var(--lal-space-6);
     align-items: start;
   }
@@ -269,7 +269,8 @@
     border-bottom: 1px solid var(--lal-border-soft);
   }
   .ai2-opp-card:last-child { border-bottom: none; }
-  .ai2-opp-sku { font-weight: 600; color: var(--lal-text-main); }
+  .ai2-opp-sku { font-weight: 600; color: var(--lal-text-main); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .ai2-main > .lal-grid-2 { align-items: start; }
   .ai2-opp-reason { font: var(--lal-text-small); color: var(--lal-text-muted); margin: 2px 0 4px; }
   .ai2-opp-meta { display: flex; flex-wrap: wrap; gap: var(--lal-space-3); font: var(--lal-text-small); }
   .ai2-opp-meta span { color: var(--lal-text-muted); }
@@ -305,86 +306,100 @@
   .ai2-mp-tag.trendyol { background: var(--lal-mp-trendyol-dim); color: var(--lal-mp-trendyol); }
   .ai2-mp-tag.hepsiburada { background: var(--lal-mp-hepsiburada-dim); color: var(--lal-mp-hepsiburada); }
 
-  /* ---- LAL AI Asistan chat kutusu ---- */
-  .ai2-chat-panel {
-    position: sticky;
-    top: var(--lal-space-4);
-    display: flex;
-    flex-direction: column;
-    height: calc(100vh - var(--lal-topbar-h) - var(--lal-space-8));
-    max-height: 640px;
-  }
-  .ai2-chat-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--lal-space-3);
-  }
-  .ai2-chat-title { font: var(--lal-text-h2); color: var(--lal-text-main); display: flex; align-items: center; gap: 6px; }
-  .ai2-chat-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: var(--lal-space-3); }
-  .ai2-chat-greeting { font: var(--lal-text-body); color: var(--lal-text-muted); }
-  .ai2-chat-prompts { display: flex; flex-direction: column; gap: var(--lal-space-2); margin-top: var(--lal-space-2); }
-  .ai2-chat-prompt-btn {
-    text-align: left;
-    background: var(--lal-surface-2);
-    border: 1px solid var(--lal-border-soft);
-    color: var(--lal-text-main);
-    border-radius: var(--lal-radius-lg);
-    padding: 8px 10px;
-    font: var(--lal-text-small);
-    cursor: pointer;
-    transition: background var(--lal-dur-fast) var(--lal-ease-out), border-color var(--lal-dur-fast) var(--lal-ease-out);
-  }
-  .ai2-chat-prompt-btn:hover { background: var(--lal-surface-hover); border-color: var(--lal-border); }
-  .ai2-chat-msg {
-    align-self: flex-end;
-    background: var(--lal-accent-dim);
-    color: var(--lal-text-main);
-    border-radius: var(--lal-radius-lg);
-    padding: 8px 10px;
-    font: var(--lal-text-small);
-    max-width: 90%;
-  }
-  .ai2-chat-msg-reply {
-    align-self: flex-start;
-    background: var(--lal-surface-2);
-    color: var(--lal-text-muted);
-    border-radius: var(--lal-radius-lg);
-    padding: 8px 10px;
-    font: var(--lal-text-small);
-    max-width: 90%;
-  }
-  .ai2-chat-input-row {
-    display: flex;
-    gap: 6px;
-    margin-top: var(--lal-space-3);
-  }
-  .ai2-chat-input {
-    flex: 1;
-    background: var(--lal-surface-2);
-    border: 1px solid var(--lal-border-soft);
-    border-radius: var(--lal-radius-lg);
-    color: var(--lal-text-main);
-    padding: 9px 10px;
-    font: var(--lal-text-body);
-  }
-  .ai2-chat-input:focus { outline: none; border-color: var(--lal-accent); }
-  .ai2-chat-send {
-    background: var(--lal-accent);
-    color: var(--lal-accent-fg);
-    border: none;
-    border-radius: var(--lal-radius-lg);
-    padding: 0 14px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .ai2-chat-send:hover { background: var(--lal-accent-hover); }
-  .ai2-muted-note { font: var(--lal-text-micro); color: var(--lal-text-faint); margin-top: var(--lal-space-2); text-transform: none; letter-spacing: 0; }
+  /* ---- Bugün yapılacaklar (sağ kolon) ---- */
+  .ai2-todo { position: sticky; top: calc(var(--lal-topbar-h) + var(--lal-space-4)); }
+  .ai2-todo-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .ai2-todo-count { font: var(--lal-text-small); color: var(--lal-text-faint); }
+  .ai2-todo-list { list-style: none; margin: var(--lal-space-2) 0 0; padding: 0; display: flex; flex-direction: column; }
+  .ai2-todo-list li + li { border-top: 1px solid var(--lal-border-soft); }
+  .ai2-todo-item { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; padding: 11px 6px; margin: 0 -6px; border-radius: var(--lal-radius-md); color: var(--lal-text-main); text-decoration: none; transition: background var(--lal-dur-fast) ease; }
+  a.ai2-todo-item:hover { background: var(--lal-hover-wash, var(--lal-surface-hover)); }
+  a.ai2-todo-item:focus-visible { outline: none; box-shadow: var(--lal-focus-ring); }
+  .ai2-todo-n { display: grid; place-items: center; height: 30px; min-width: 30px; padding: 0 6px; border-radius: 9px; font: 600 14px/1 var(--lal-font-display); font-variant-numeric: tabular-nums; background: var(--lal-surface-2); color: var(--lal-text-main); }
+  .ai2-todo-item.is-crit .ai2-todo-n { background: var(--lal-red-dim); color: var(--lal-red); }
+  .ai2-todo-item.is-warn .ai2-todo-n { background: var(--lal-amber-dim); color: var(--lal-amber); }
+  .ai2-todo-item.is-ok .ai2-todo-n { background: var(--lal-green-dim); color: var(--lal-green); }
+  .ai2-todo-t { font: var(--lal-text-body-medium); line-height: 1.3; }
+  .ai2-todo-s { font: var(--lal-text-micro); color: var(--lal-text-faint); margin-top: 2px; }
+  .ai2-todo-go { color: var(--lal-text-faint); font-size: 16px; }
+  .ai2-todo-skel { height: 52px; border-radius: var(--lal-radius-md); background: linear-gradient(90deg, var(--lal-surface-2), var(--lal-surface-hover), var(--lal-surface-2)); background-size: 200% 100%; animation: aiSkel 1.4s ease-in-out infinite; margin: 6px 0; border: 0 !important; }
+  @keyframes aiSkel { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .ai2-todo-skel { animation: none; } }
+  .ai2-todo-foot { font: var(--lal-text-micro); color: var(--lal-text-faint); margin-top: var(--lal-space-3); }
+  .ai2-todo-done { display: flex; align-items: center; gap: 10px; padding: 14px 0; color: var(--lal-text-muted); font: var(--lal-text-body); }
+  @media (max-width: 1080px) { .ai2-todo { position: static; } }
 
-  @media (max-width: 1080px) {
-    .ai2-chat-panel { position: static; height: auto; max-height: none; }
-    .ai2-chat-body { max-height: 320px; }
+  /* ---- Brifing satırları tıklanabilir ---- */
+  a.ai2-brief-line { display: block; color: inherit; text-decoration: none; border-radius: 6px; }
+  a.ai2-brief-line:hover { color: var(--lal-accent); }
+  a.ai2-brief-line::after { content: " →"; color: var(--lal-text-faint); }
+  .ai2-briefing-summary { white-space: normal; display: flex; flex-direction: column; }
+  .ai2-brief-line:first-child::before { top: calc(.75em - 4px); }
+
+  /* =====================================================================
+     HERO v2 (02.11.2026): başlık + tarih, Bugün | Bu Ay | 4 küçük kutu,
+     grafik modları (Toplam / Platform / Kâr), lejant ve tooltip.
+     ===================================================================== */
+  .greeting-hero {
+    --ai-ty: #c2560a; --ai-hb: #2f6fc4; --ai-ot: #8e8e93; --ai-pr: #7c5cc4;
   }
+  html:not([data-lal-theme="light"]) .greeting-hero {
+    --ai-ty: #e06c12; --ai-hb: #5b8fe0; --ai-ot: #8e8e93; --ai-pr: #b39ae8;
+  }
+  .hero-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; margin-bottom: var(--lal-space-5); }
+  html .greeting-hero .hero-head .hello { margin: 0; }
+  .hero-meta { display: flex; gap: 10px; align-items: center; font: var(--lal-text-small); color: var(--lal-text-muted); }
+  .hero-mp { padding: 3px 9px; border-radius: 999px; background: var(--lal-accent-dim); color: var(--lal-text-main); font: var(--lal-text-micro); }
+  html .greeting-hero .hero-figures { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--lal-space-6) var(--lal-space-8); }
+  html .hero-figure-primary, html .hero-figure-secondary { display: flex; flex-direction: column; padding: 0; }
+  .hf-trend { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-top: 4px; font: var(--lal-text-small); }
+  .hf-trend .ai2-kpi-trend { margin: 0; font-weight: 600; }
+  .hf-muted { color: var(--lal-text-faint); }
+  .ai2-kpi-trend { color: var(--lal-text-muted); }
+  html .hf-subrow { margin-top: auto; padding-top: var(--lal-space-3); min-height: 54px; }
+  html .hero-figure-secondary .hf-subvalue { font-size: 20px; padding: 6px 12px; }
+  .hf-mini { font: 600 12px/1 var(--lal-font-display); }
+  .hf-mini:empty, .hf-muted:empty { display: none; }
+
+  .hero-side { margin-left: auto; display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 10px; align-self: stretch; min-width: min(100%, 340px); }
+  .hs-tile { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, var(--lal-surface) 62%, transparent); border: 1px solid color-mix(in srgb, var(--lal-text-main) 8%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); color: var(--lal-text-main); text-decoration: none; min-width: 0; }
+  a.hs-tile { transition: border-color var(--lal-dur-fast) ease, transform var(--lal-dur-fast) ease; }
+  a.hs-tile:hover { border-color: var(--lal-border-hover); }
+  a.hs-tile:focus-visible { outline: none; box-shadow: var(--lal-focus-ring); }
+  .hs-l { font: var(--lal-text-micro); color: var(--lal-text-faint); text-transform: none; letter-spacing: 0; }
+  .hs-v { font: 600 22px/1.2 var(--lal-font-display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hs-s { font: var(--lal-text-micro); color: var(--lal-text-faint); text-transform: none; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hs-s .ai2-kpi-trend { display: inline; font: inherit; font-weight: 600; }
+  .hs-bar { height: 4px; border-radius: 4px; background: color-mix(in srgb, var(--lal-text-main) 10%, transparent); margin-top: 6px; overflow: hidden; }
+  .hs-bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--lal-green); transition: width .6s ease; }
+  .hs-bar i.is-behind { background: var(--lal-amber); }
+  @media (max-width: 1280px) { .hero-side { margin-left: 0; flex-basis: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  @media (max-width: 760px) { .hero-side { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  .ai-chart-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .ai-chart-chip.is-up { color: var(--lal-green); }
+  .ai-chart-chip.is-down { color: var(--lal-red); }
+  .ai-seg { display: inline-flex; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--lal-text-main) 7%, transparent); }
+  .ai-seg button { border: 0; background: transparent; color: var(--lal-text-muted); font: var(--lal-text-micro); padding: 5px 10px; border-radius: 7px; cursor: pointer; text-transform: none; letter-spacing: 0; }
+  .ai-seg button:hover { color: var(--lal-text-main); }
+  .ai-seg button.is-on { background: var(--lal-surface); color: var(--lal-text-main); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+  .ai-seg button:focus-visible { outline: none; box-shadow: var(--lal-focus-ring); }
+  .ai-chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 4px 6px; font: var(--lal-text-micro); color: var(--lal-text-muted); text-transform: none; letter-spacing: 0; }
+  .ai-lg { display: inline-flex; align-items: center; gap: 6px; }
+  .ai-lg i { display: inline-block; flex: none; }
+  .ai-lg-sq { width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
+  .ai-lg-ln { width: 14px; height: 2.5px; border-radius: 2px; background: var(--c); }
+  .ai-lg-dash { width: 14px; height: 0; border-top: 2px dotted var(--c); }
+  .ai-lg-ring { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--c); }
+  .ai-chart-cv { cursor: crosshair; }
+  .ai-chart-tip { position: absolute; top: 6px; z-index: 2; min-width: 168px; padding: 9px 11px; border-radius: 12px; pointer-events: none; background: var(--lal-bg-elevated); border: 1px solid var(--lal-border); box-shadow: var(--lal-shadow-2); font: var(--lal-text-micro); color: var(--lal-text-main); text-transform: none; letter-spacing: 0; }
+  .ai-tip-h { font-weight: 600; margin-bottom: 5px; }
+  .ai-tip-r { display: flex; justify-content: space-between; gap: 14px; padding: 1px 0; }
+  .ai-tip-r b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ai-tip-r span { display: inline-flex; align-items: center; gap: 6px; color: var(--lal-text-muted); }
+  .ai-tip-r.sub span { padding-left: 2px; }
+  .ai-tip-r.muted { margin-top: 4px; padding-top: 5px; border-top: 1px solid var(--lal-border-soft); }
+  .ai-tip-r i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 </style>
 {% endblock %}
 
@@ -400,28 +415,68 @@
   </div>
   <div class="greeting-hero ai-dn">
     <div class="ai-aurora" aria-hidden="true"><i class="ai-blob b1"></i><i class="ai-blob b2"></i><i class="ai-blob b3"></i></div>
-    <p class="hello">Hoş geldin, <strong>Sidar.</strong></p>
+    <div class="hero-head">
+      <p class="hello">Hoş geldin, <strong>Sidar.</strong></p>
+      <div class="hero-meta"><span id="hero-date"></span><span class="hero-mp" id="hero-mp-label" hidden></span></div>
+    </div>
     <div class="hero-figures">
       <div class="hero-figure-primary">
         <div class="hf-label">Bugünkü Satış</div>
         <div class="hf-value" id="hero-today-sales">–</div>
+        <div class="hf-trend"><span class="ai2-kpi-trend" id="ai2-kpi-sales-trend">–</span><span class="hf-muted" id="ai2-kpi-sales-avg"></span></div>
         <div class="hf-subrow">
-          <span class="hf-sublabel" title="Bugün sipariş edilenlerin net kârı (komisyon, hizmet bedeli, kargo, stopaj, iade ve ürün maliyeti düşülmüş). Ayrı günlerde satılıp bugün hakedişi işlenen siparişleri içermez — bu yüzden her zaman Bugünkü Satış'tan küçük veya ona eşit olmalıdır.">Net Kazanç ⓘ</span>
+          <span class="hf-sublabel" title="Bugün sipariş edilenlerin net kârı: komisyon, hizmet bedeli, kargo, stopaj, iade ve ürün maliyeti düşülmüş.">Net Kazanç ⓘ</span>
           <span class="hf-subvalue" id="hero-today-net-profit">–</span>
+          <span class="ai2-kpi-trend hf-mini" id="ai2-kpi-profit-trend" title="7 günlük ortalamaya göre"></span>
         </div>
-        <svg class="hero-wave" viewBox="0 0 260 20" preserveAspectRatio="none" aria-hidden="true">
-          <path class="hero-wave-anim" d="M0 10 Q 15 2, 30 10 T 60 10 T 90 10 T 120 10 T 150 10 T 180 10 T 210 10 T 240 10 T 270 10" stroke-dasharray="6 5"/>
-          <path class="hero-wave-anim wave-2" d="M0 14 Q 15 8, 30 14 T 60 14 T 90 14 T 120 14 T 150 14 T 180 14 T 210 14 T 240 14 T 270 14" stroke-dasharray="4 6"/>
-        </svg>
       </div>
       <div class="hero-figure-secondary">
-        <div class="hf-label">Bu Ay Toplam</div>
+        <div class="hf-label">Bu Ay</div>
         <div class="hf-value" id="hero-month-sales">–</div>
+        <div class="hf-trend"><span class="ai2-kpi-trend" id="hero-month-cmp">–</span><span class="hf-muted" id="hero-month-cmp-sub"></span></div>
+        <div class="hf-subrow">
+          <span class="hf-sublabel" title="Ayın 1'inden bugüne sipariş edilenlerin net kârı.">Net Kâr ⓘ</span>
+          <span class="hf-subvalue" id="hero-month-net-profit">–</span>
+        </div>
+      </div>
+      <div class="hero-side">
+        <div class="hs-tile">
+          <div class="hs-l">Sipariş (bugün)</div>
+          <div class="hs-v" id="ai2-kpi-orders-value">–</div>
+          <div class="hs-s"><span class="ai2-kpi-trend" id="ai2-kpi-orders-trend"></span> <span id="ai2-kpi-orders-avg"></span></div>
+        </div>
+        <div class="hs-tile">
+          <div class="hs-l">Net marj (bugün) <span title="Yaklaşık: dönemsel giderler (stopaj, iade, platform bedeli) günlere eşit dağıtıldı.">ⓘ</span></div>
+          <div class="hs-v" id="ai2-kpi-margin-value">–</div>
+          <div class="hs-s"><span class="ai2-kpi-trend" id="ai2-kpi-margin-trend"></span> <span id="ai2-kpi-margin-avg"></span></div>
+        </div>
+        <div class="hs-tile">
+          <div class="hs-l">Ay sonu tahmini</div>
+          <div class="hs-v" id="hero-proj">–</div>
+          <div class="hs-s" id="hero-proj-sub"></div>
+          <div class="hs-bar" aria-hidden="true"><i id="hero-proj-bar"></i></div>
+        </div>
+        <a class="hs-tile hs-link" href="/finans">
+          <div class="hs-l">Tahsilat (14 gün)</div>
+          <div class="hs-v" id="hero-cash">–</div>
+          <div class="hs-s" id="hero-cash-sub">Ödeme takvimi →</div>
+        </a>
       </div>
     </div>
-    <div class="ai-chart" role="img" aria-label="Son 30 günün günlük satış grafiği">
-      <div class="ai-chart-head"><b>Son 30 gün · günlük satış</b><span class="ai-chart-chip" id="ai-chart-chip"></span></div>
-      <div class="ai-chart-cv"><canvas id="ai-chart-cv"></canvas></div>
+    <div class="ai-chart">
+      <div class="ai-chart-head">
+        <b id="ai-chart-title">Son 30 gün · günlük satış</b>
+        <div class="ai-chart-tools">
+          <span class="ai-chart-chip" id="ai-chart-chip"></span>
+          <div class="ai-seg" id="ai-chart-modes" role="group" aria-label="Grafik görünümü">
+            <button type="button" data-mode="total" aria-pressed="true" class="is-on">Toplam</button>
+            <button type="button" data-mode="platform" aria-pressed="false">Platform</button>
+            <button type="button" data-mode="profit" aria-pressed="false" title="Kâr: komisyon, kargo ve ürün maliyeti düşülmüş; sabit giderler hariç">Kâr</button>
+          </div>
+        </div>
+      </div>
+      <div class="ai-chart-legend" id="ai-chart-legend"></div>
+      <div class="ai-chart-cv" role="img" aria-label="Son 30 günün günlük satış grafiği"><canvas id="ai-chart-cv"></canvas><div class="ai-chart-tip" id="ai-chart-tip" hidden></div></div>
     </div>
   </div>
 
@@ -432,35 +487,7 @@
       <div class="lal-panel">
         <h2 class="lal-panel-title">Günlük AI Brifingi</h2>
         <div class="ai2-briefing-summary" id="ai2-briefing-text">Brifing hazırlanıyor…</div>
-        <a href="/gosterge-paneli" class="ai2-briefing-link">Detaylı incele →</a>
-      </div>
-
-      <!-- 2) KPI TREND GRID -->
-      <div class="lal-grid-4" id="ai2-kpi-grid">
-        <div class="hero-stat">
-          <div class="lal-kpi-label">Bugünkü Satış</div>
-          <div class="lal-kpi-value" id="ai2-kpi-sales-value">–</div>
-          <div class="ai2-kpi-trend" id="ai2-kpi-sales-trend">–</div>
-          <div class="ai2-kpi-sub" id="ai2-kpi-sales-avg">7 gün ort. –</div>
-        </div>
-        <div class="hero-stat">
-          <div class="lal-kpi-label">Net Kazanç <span title="Tüm pazaryerleri toplamı — hero'daki 'Net Kazanç' ile birebir aynı kaynaktan.">ⓘ</span></div>
-          <div class="lal-kpi-value" id="ai2-kpi-profit-value">–</div>
-          <div class="ai2-kpi-trend" id="ai2-kpi-profit-trend">–</div>
-          <div class="ai2-kpi-sub" id="ai2-kpi-profit-avg">7 gün ort. –</div>
-        </div>
-        <div class="hero-stat">
-          <div class="lal-kpi-label">Sipariş</div>
-          <div class="lal-kpi-value" id="ai2-kpi-orders-value">–</div>
-          <div class="ai2-kpi-trend" id="ai2-kpi-orders-trend">–</div>
-          <div class="ai2-kpi-sub" id="ai2-kpi-orders-avg">7 gün ort. –</div>
-        </div>
-        <div class="hero-stat">
-          <div class="lal-kpi-label">Net Marj <span title="Yaklaşık değer: dönemsel giderler (stopaj, iade, platform bedeli) 8 güne eşit dağıtılarak hesaplandı.">ⓘ</span></div>
-          <div class="lal-kpi-value" id="ai2-kpi-margin-value">–</div>
-          <div class="ai2-kpi-trend" id="ai2-kpi-margin-trend">–</div>
-          <div class="ai2-kpi-sub" id="ai2-kpi-margin-avg">7 gün ort. –</div>
-        </div>
+        <a href="/gosterge-paneli" class="ai2-briefing-link">Detaylı Analiz'de incele →</a>
       </div>
 
       <!-- 3) AYLIK HEDEF & MOMENTUM -->
@@ -515,34 +542,19 @@
         <div id="ai2-cashflow">Yükleniyor…</div>
       </div>
 
-      <div class="lal-panel">
-        <h2 class="lal-panel-title">AI Önerileri</h2>
-        <div class="lal-status-card-body">Öneri motoru henüz eklenmedi — LAL vizyon belgesindeki gelecek modüllerden biri. <span class="lal-badge lal-badge-soon">Yakında</span></div>
-      </div>
 
     </div>
 
-    <!-- 8) LAL AI ASİSTAN CHAT BOX (UI iskeleti — henüz gerçek AI bağlantısı yok) -->
-    <aside class="lal-panel ai2-chat-panel">
-      <div class="ai2-chat-header">
-        <span class="ai2-chat-title">✦ LAL AI Asistan</span>
-        <span class="lal-badge lal-badge-soon">Yakında</span>
+    <!-- BUGÜN YAPILACAKLAR — operasyonel iş listesi (sağ kolon) -->
+    <aside class="lal-panel ai2-todo" aria-labelledby="ai2-todo-title">
+      <div class="ai2-todo-head">
+        <h2 class="lal-panel-title" id="ai2-todo-title">Bugün yapılacaklar</h2>
+        <span class="ai2-todo-count" id="ai2-todo-count"></span>
       </div>
-      <div class="ai2-chat-body" id="ai2-chat-body">
-        <div class="ai2-chat-greeting">Merhaba Sidar. Bugün sana nasıl yardımcı olabilirim?</div>
-        <div class="ai2-chat-prompts" id="ai2-chat-prompts">
-          <button type="button" class="ai2-chat-prompt-btn" data-prompt="Bu ay hedefime ulaşacak mıyım?">Bu ay hedefime ulaşacak mıyım?</button>
-          <button type="button" class="ai2-chat-prompt-btn" data-prompt="En kârlı ürünüm hangisi?">En kârlı ürünüm hangisi?</button>
-          <button type="button" class="ai2-chat-prompt-btn" data-prompt="Hangi ürünler stokta tükenebilir?">Hangi ürünler stokta tükenebilir?</button>
-          <button type="button" class="ai2-chat-prompt-btn" data-prompt="Trendyol mu Hepsiburada mı daha iyi?">Trendyol mu Hepsiburada mı daha iyi?</button>
-          <button type="button" class="ai2-chat-prompt-btn" data-prompt="Bekleyen settlement neden kayıtsız?">Bekleyen settlement neden kayıtsız?</button>
-        </div>
-      </div>
-      <div class="ai2-chat-input-row">
-        <input type="text" class="ai2-chat-input" id="ai2-chat-input" placeholder="Sorunu yaz…" />
-        <button type="button" class="ai2-chat-send" id="ai2-chat-send">→</button>
-      </div>
-      <div class="ai2-muted-note">LAL AI Asistan henüz aktif değil — bu arayüz gelecekteki gerçek AI entegrasyonu için hazırlanıyor.</div>
+      <ul class="ai2-todo-list" id="ai2-todo-list">
+        <li class="ai2-todo-skel"></li><li class="ai2-todo-skel"></li><li class="ai2-todo-skel"></li>
+      </ul>
+      <div class="ai2-todo-foot" id="ai2-todo-foot"></div>
     </aside>
   </div>
 {% endblock %}
@@ -586,82 +598,119 @@
   // ---------------------------------------------------------------------
   var lastKnownNetProfit = null;
 
-  // Hero ve KPI kartı "Bugünkü Satış"ı AYNI kaynaktan (/api/daily-sales
-  // net_amount) okusun diye tek, önbellekli çağrı. Her yüklemede sıfırlanır.
-  var dailySalesCache = {};
-  function getDailySales(mp) {
-    mp = mp || 'all';
-    if (!dailySalesCache[mp]) {
-      dailySalesCache[mp] = fetch('/api/daily-sales?full_history=true&marketplace=' + mp)
+  // TEK veri kaynağı: /api/daily-sales (tüm pazaryerleri, by_marketplace
+  // kırılımıyla). Endpoint marketplace parametresini yok saydığı için filtre
+  // burada uygulanır — eskiden "Trendyol" seçiliyken de toplam görünüyordu.
+  var dailySalesPromise = null;
+  function getDailySales() {
+    if (!dailySalesPromise) {
+      dailySalesPromise = fetch('/api/daily-sales?full_history=true&marketplace=all')
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data.error || !data.daily) return null;
-          var map = {};
-          data.daily.forEach(function (d) { map[(d.date || '').slice(0, 10)] = d.net_amount || 0; });
-          return { daily: data.daily, map: map };
-        })
+        .then(function (data) { return (data.error || !data.daily) ? null : data.daily; })
         .catch(function () { return null; });
     }
-    return dailySalesCache[mp];
+    return dailySalesPromise;
+  }
+  function mpValue(row, mp) {
+    if (!row) return 0;
+    if (mp === 'all') return row.net_amount || 0;
+    return (row.by_marketplace && row.by_marketplace[mp]) || 0;
+  }
+  function dailyMap(daily, mp) {
+    var map = {};
+    (daily || []).forEach(function (d) { map[(d.date || '').slice(0, 10)] = mpValue(d, mp); });
+    return map;
+  }
+  var MP_LABEL = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada' };
+  var MON_LONG = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  var DAY_LONG = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
+  function setTrend(id, pct, suffix) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = (pct === null || pct === undefined || !isFinite(pct)) ? '' : pctStr(pct) + (suffix || '');
+    el.className = el.className.replace(/\s*is-(up|down)/g, '') + ' ' + trendClass(pct);
   }
 
   function loadHeroSales() {
-    dailySalesCache = {};
-    var todayEl = document.getElementById('hero-today-sales');
-    var monthEl = document.getElementById('hero-month-sales');
-    if (todayEl && monthEl) {
-      getDailySales('all')
-        .then(function (res) {
-          if (!res) { todayEl.textContent = '—'; monthEl.textContent = '—'; return; }
-          var daily = res.daily;
-          window.__lalDailySales = daily;
-          document.dispatchEvent(new CustomEvent('lal:daily-sales', { detail: daily }));
-          var now = new Date();
-          var todayStr = localDateStr(now);
-          var monthPrefix = todayStr.slice(0, 7);
-          var todayRow = daily.find(function (d) { return (d.date || '').slice(0, 10) === todayStr; });
-          var monthTotal = daily
-            .filter(function (d) { return (d.date || '').slice(0, 7) === monthPrefix; })
-            .reduce(function (sum, d) { return sum + (d.net_amount || 0); }, 0);
-          todayEl.textContent = fmtTL(todayRow ? todayRow.net_amount : 0);
-          monthEl.textContent = fmtTL(monthTotal);
-        })
-        .catch(function () { todayEl.textContent = '—'; monthEl.textContent = '—'; });
-    }
+    dailySalesPromise = null;
+    var mp = ai2Mp();
+    var now = new Date();
+    safeText('hero-date', DAY_LONG[now.getDay()] + ', ' + now.getDate() + ' ' + MON_LONG[now.getMonth()]);
+    var mpEl = document.getElementById('hero-mp-label');
+    if (mpEl) { mpEl.hidden = mp === 'all'; mpEl.textContent = (MP_LABEL[mp] || '') + ' filtresi'; }
 
-    var netProfitEl = document.getElementById('hero-today-net-profit');
-    if (netProfitEl) {
-      fetch('/api/today-net-profit')
+    getDailySales().then(function (daily) {
+      var todayEl = document.getElementById('hero-today-sales');
+      var monthEl = document.getElementById('hero-month-sales');
+      if (!daily) { safeText('hero-today-sales', '—'); safeText('hero-month-sales', '—'); return; }
+      window.__lalDailySales = daily;
+      document.dispatchEvent(new CustomEvent('lal:daily-sales', { detail: daily }));
+      var map = dailyMap(daily, mp);
+      var todayStr = localDateStr(now);
+      var tr = window.lalSalesTrend ? window.lalSalesTrend(map, now) : { today: map[todayStr] || 0, avg: null, pct: null };
+      if (todayEl) todayEl.textContent = fmtTL(tr.today);
+      setTrend('ai2-kpi-sales-trend', tr.pct);
+      safeText('ai2-kpi-sales-avg', tr.avg !== null ? '7 gün ort. ' + fmtTL(tr.avg) : '');
+
+      // Bu Ay + geçen ayın AYNI dönemi (1..bugünün günü) kıyası.
+      var day = now.getDate();
+      var thisPrefix = todayStr.slice(0, 7);
+      var prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      var prevPrefix = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
+      var monthTotal = 0, prevSame = 0;
+      Object.keys(map).forEach(function (k) {
+        if (k.slice(0, 7) === thisPrefix && k <= todayStr) monthTotal += map[k];
+        else if (k.slice(0, 7) === prevPrefix && parseInt(k.slice(8, 10), 10) <= day) prevSame += map[k];
+      });
+      if (monthEl) monthEl.textContent = fmtTL(monthTotal);
+      var cmp = prevSame > 0 ? (monthTotal / prevSame - 1) * 100 : null;
+      setTrend('hero-month-cmp', cmp);
+      safeText('hero-month-cmp-sub', 'geçen ayın 1–' + day + ' ' + MON_LONG[prev.getMonth()].slice(0, 3) + ' dönemine göre (' + fmtTL(prevSame) + ')');
+    });
+
+    function loadNet(period, elId, done) {
+      var el = document.getElementById(elId);
+      if (!el) return;
+      fetch('/api/today-net-profit?period=' + period + '&marketplace=' + mp)
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          if (data.error) { netProfitEl.textContent = '—'; return; }
-          if (data.netProfit === null || data.netProfit === undefined) {
-            netProfitEl.textContent = '–';
-            netProfitEl.title = data.missingCostCount
-              ? (data.missingCostCount + ' ürünün maliyeti tanımlı değil — net kazanç güvenilir hesaplanamıyor')
-              : 'Bugün için henüz hesaplanabilir veri yok';
-            netProfitEl.classList.remove('is-danger');
-            lastKnownNetProfit = null;
-            safeText('ai2-kpi-profit-value', '–');
+          el.classList.remove('is-danger');
+          el.style.color = '';
+          if (data.error) { el.textContent = '—'; el.title = data.error; done && done(null); return; }
+          var v = data.netProfit;
+          if (v === null || v === undefined) {
+            // Maliyeti eksik SKU varsa kısmi değeri "≈" ile göster (tamamen
+            // gizlemek yerine) — başlıkta hangi durum olduğu yazıyor.
+            if (data.missingCostCount && data.netProfitPartial !== null && data.netProfitPartial !== undefined) {
+              el.textContent = '≈ ' + fmtTL(data.netProfitPartial);
+              el.title = data.missingCostCount + ' ürünün maliyeti tanımlı değil — bu ürünler hariç yaklaşık değer';
+            } else {
+              el.textContent = '–';
+              el.title = 'Henüz hesaplanabilir veri yok';
+            }
+            done && done(null);
             return;
           }
-          netProfitEl.textContent = fmtTL(data.netProfit);
-          netProfitEl.title = '';
-          netProfitEl.classList.toggle('is-danger', data.netProfit < 0);
-          netProfitEl.style.color = data.netProfit > 0 ? 'var(--green)' : '';
-          lastKnownNetProfit = data.netProfit;
-          safeText('ai2-kpi-profit-value', fmtTL(data.netProfit));
+          el.textContent = fmtTL(v);
+          el.title = '';
+          el.classList.toggle('is-danger', v < 0);
+          done && done(v);
         })
-        .catch(function () { netProfitEl.textContent = '—'; });
+        .catch(function () { el.textContent = '—'; done && done(null); });
     }
+    loadNet('today', 'hero-today-net-profit', function (v) {
+      lastKnownNetProfit = v;
+    });
+    loadNet('month', 'hero-month-net-profit');
   }
 
   // ---------------------------------------------------------------------
-  // KPI TREND GRID + BUGÜN NEDEN BÖYLE? (anomali)
+  // KPI (sipariş, marj, kâr trendi) + grafik kâr serisi + BUGÜN NEDEN BÖYLE?
   // ---------------------------------------------------------------------
-  // Tek bir /api/dashboard-summary?days=8 çağrısıyla hem 4 KPI kartını
-  // hem de anomali panelini besliyoruz — aynı veri iki kez ayrı ayrı
-  // çekilmiyor. 8 gün = bugün + trailing 7 gün ortalaması.
+  // Tek /api/dashboard-summary?days=31 çağrısı: son 30 günün satır kârı
+  // grafiğe ('lal:daily-profit'), son 8 gün KPI ve anomali paneline gider.
+  // Ortalamalar HER YERDE önceki 7 TAKVİM günü üzerinden (satışsız gün = 0).
   var lastDaySummaryLines = null; // stok bazlı anomali sebebi için ai2-loadStockVelocity ile paylaşılıyor
 
   function groupLinesByDay(lines) {
@@ -680,87 +729,74 @@
     return map;
   }
 
+  function prev7Keys(today) {
+    var out = [];
+    for (var i = 1; i <= 7; i++) { var d = new Date(today); d.setDate(d.getDate() - i); out.push(localDateStr(d)); }
+    return out;
+  }
+
   function loadKpiAndAnomaly() {
-    var qs = 'days=8&marketplace=' + ai2Mp() + '&lines_page_size=5000';
+    var qs = 'days=31&marketplace=' + ai2Mp() + '&lines_page_size=5000';
     Promise.all([
       fetch('/api/dashboard-summary?' + qs).then(function (r) { return r.json(); }),
-      getDailySales(ai2Mp())
+      getDailySales()
     ])
       .then(function (res) {
-        var data = res[0], ds = res[1];
+        var data = res[0], daily = res[1];
         if (data.error || !data.lines) {
-          ['sales', 'orders', 'margin'].forEach(function (k) {
-            safeText('ai2-kpi-' + k + '-value', '–');
-            safeText('ai2-kpi-' + k + '-trend', 'Yeterli veri yok');
-          });
+          ['orders', 'margin'].forEach(function (k) { safeText('ai2-kpi-' + k + '-value', '–'); });
           safeText('ai2-anomaly-body', 'Yeterli veri yok.');
           return;
         }
         lastDaySummaryLines = data.lines;
         var byDay = groupLinesByDay(data.lines);
-        var todayKey = localDateStr(new Date());
-        var overheadDailyShare = (data.totals && data.totals.overheadTotal || 0) / 8;
+        var now = new Date();
+        var todayKey = localDateStr(now);
+        var prevDays = prev7Keys(now);
+        var empty = { revenue: 0, grossProfit: 0, orders: {}, mp: {} };
+        var get = function (k) { return byDay[k] || empty; };
+        // Dönemsel giderler 31 güne eşit dağıtılır (yaklaşık net).
+        var overheadDailyShare = (data.totals && data.totals.overheadTotal || 0) / 31;
 
-        var days = Object.keys(byDay).sort();
-        var todayEntry = byDay[todayKey] || { revenue: 0, grossProfit: 0, orders: {}, mp: {} };
-        var prevDays = days.filter(function (d) { return d !== todayKey; });
+        // Grafik için günlük kâr serisi (satır kârı; sabit gider hariç).
+        var profitMap = {};
+        Object.keys(byDay).forEach(function (k) { profitMap[k] = byDay[k].grossProfit; });
+        document.dispatchEvent(new CustomEvent('lal:daily-profit', { detail: profitMap }));
 
-        function avg(field, fn) {
-          if (!prevDays.length) return null;
-          var sum = prevDays.reduce(function (s, d) { return s + fn(byDay[d]); }, 0);
-          return sum / prevDays.length;
-        }
-
+        var avg = function (fn) { return prevDays.reduce(function (s, k) { return s + fn(get(k)); }, 0) / 7; };
+        var todayEntry = get(todayKey);
         var todayRevenue = todayEntry.revenue;
-        var avgRevenue = avg('revenue', function (d) { return d.revenue; });
+        var avgRevenue = avg(function (d) { return d.revenue; });
         var todayOrders = Object.keys(todayEntry.orders).length;
-        var avgOrders = avg('orders', function (d) { return Object.keys(d.orders).length; });
+        var avgOrders = avg(function (d) { return Object.keys(d.orders).length; });
         var todayNetApprox = todayEntry.grossProfit - overheadDailyShare;
-        var avgNetApprox = avg('net', function (d) { return d.grossProfit - overheadDailyShare; });
+        var avgNetApprox = avg(function (d) { return d.grossProfit; }) - overheadDailyShare;
         var todayMargin = todayRevenue > 0 ? (todayNetApprox / todayRevenue) * 100 : null;
-        var avgMargin = (avgRevenue && avgRevenue > 0) ? (avgNetApprox / avgRevenue) * 100 : null;
+        var avgMargin = avgRevenue > 0 ? (avgNetApprox / avgRevenue) * 100 : null;
 
-        // --- KPI kartları ---
-        // "Bugünkü Satış": hero ile aynı kaynak (daily-sales net_amount).
-        // daily-sales alınamazsa eski satır-bazlı değere düşer.
-        var salesToday = todayRevenue, salesAvg = avgRevenue;
-        if (ds) {
-          salesToday = ds.map[todayKey] || 0;
-          salesAvg = prevDays.length
-            ? prevDays.reduce(function (s, d) { return s + (ds.map[d] || 0); }, 0) / prevDays.length
-            : null;
-        }
-        safeText('ai2-kpi-sales-value', fmtTL(salesToday));
-        var salesPct = salesAvg ? ((salesToday - salesAvg) / salesAvg) * 100 : null;
-        var salesTrendEl = document.getElementById('ai2-kpi-sales-trend');
-        salesTrendEl.textContent = pctStr(salesPct);
-        salesTrendEl.className = 'ai2-kpi-trend ' + trendClass(salesPct);
-        safeText('ai2-kpi-sales-avg', '7 gün ort. ' + (salesAvg !== null ? fmtTL(salesAvg) : '–'));
+        // Satış trendi: hero ile aynı kaynak + aynı formül (lalSalesTrend).
+        var map = dailyMap(daily, ai2Mp());
+        var tr = window.lalSalesTrend ? window.lalSalesTrend(map, now) : { today: todayRevenue, avg: avgRevenue, pct: null };
 
-        // Net Kazanç kartı: gerçek (hero) değer varsa onu kullan, trend için yaklaşık avg
         var profitValueForTrend = (lastKnownNetProfit !== null) ? lastKnownNetProfit : todayNetApprox;
         var profitPct = avgNetApprox ? ((profitValueForTrend - avgNetApprox) / Math.abs(avgNetApprox)) * 100 : null;
-        var profitTrendEl = document.getElementById('ai2-kpi-profit-trend');
-        profitTrendEl.textContent = pctStr(profitPct);
-        profitTrendEl.className = 'ai2-kpi-trend ' + trendClass(profitPct);
-        safeText('ai2-kpi-profit-avg', '7 gün ort. ' + (avgNetApprox !== null ? fmtTL(avgNetApprox) : '–'));
+        setTrend('ai2-kpi-profit-trend', profitPct);
 
         safeText('ai2-kpi-orders-value', fmtNum(todayOrders));
-        var ordersPct = avgOrders ? ((todayOrders - avgOrders) / avgOrders) * 100 : null;
-        var ordersTrendEl = document.getElementById('ai2-kpi-orders-trend');
-        ordersTrendEl.textContent = pctStr(ordersPct);
-        ordersTrendEl.className = 'ai2-kpi-trend ' + trendClass(ordersPct);
-        safeText('ai2-kpi-orders-avg', '7 gün ort. ' + (avgOrders !== null ? avgOrders.toFixed(1).replace('.', ',') : '–'));
+        setTrend('ai2-kpi-orders-trend', avgOrders ? ((todayOrders - avgOrders) / avgOrders) * 100 : null);
+        safeText('ai2-kpi-orders-avg', 'ort. ' + avgOrders.toFixed(1).replace('.', ','));
 
         safeText('ai2-kpi-margin-value', todayMargin !== null ? ('%' + todayMargin.toFixed(1).replace('.', ',')) : '–');
-        var marginPct = (avgMargin !== null && todayMargin !== null) ? (todayMargin - avgMargin) : null;
-        var marginTrendEl = document.getElementById('ai2-kpi-margin-trend');
-        marginTrendEl.textContent = marginPct !== null ? (pctStr(marginPct).replace('%', 'puan %')) : '–';
-        marginTrendEl.className = 'ai2-kpi-trend ' + trendClass(marginPct);
-        safeText('ai2-kpi-margin-avg', '7 gün ort. ' + (avgMargin !== null ? ('%' + avgMargin.toFixed(1).replace('.', ',')) : '–'));
+        var marginEl = document.getElementById('ai2-kpi-margin-trend');
+        if (marginEl) {
+          var dm = (avgMargin !== null && todayMargin !== null) ? (todayMargin - avgMargin) : null;
+          marginEl.textContent = dm !== null ? ((dm >= 0 ? '▲ ' : '▼ ') + Math.abs(dm).toFixed(1).replace('.', ',') + ' puan') : '';
+          marginEl.className = 'ai2-kpi-trend ' + trendClass(dm);
+        }
+        safeText('ai2-kpi-margin-avg', avgMargin !== null ? ('ort. %' + avgMargin.toFixed(1).replace('.', ',')) : '');
 
-        // --- Bugün Neden Böyle? ---
-        renderAnomaly(todayRevenue, avgRevenue, salesPct, todayEntry, byDay, prevDays);
+        renderAnomaly(tr.today, tr.avg, tr.pct, todayEntry, byDay, prevDays);
+        buildDailyBriefing();
       })
       .catch(function () {
         safeText('ai2-anomaly-body', 'Veri alınamadı.');
@@ -770,7 +806,7 @@
   function renderAnomaly(todayRevenue, avgRevenue, salesPct, todayEntry, byDay, prevDays) {
     var el = document.getElementById('ai2-anomaly-body');
     if (!el) return;
-    if (avgRevenue === null || prevDays.length < 3) {
+    if (avgRevenue === null || !avgRevenue) {
       el.innerHTML = '<div class="ai2-anomaly-caption">Yeterli geçmiş veri birikmedi (en az birkaç günlük satış geçmişi gerekiyor).</div>';
       return;
     }
@@ -793,7 +829,7 @@
     var mpKeys = ['trendyol', 'hepsiburada'];
     mpKeys.forEach(function (mp) {
       var todayMp = (todayEntry.mp && todayEntry.mp[mp]) || 0;
-      var mpAvg = prevDays.length ? prevDays.reduce(function (s, d) { return s + ((byDay[d].mp && byDay[d].mp[mp]) || 0); }, 0) / prevDays.length : null;
+      var mpAvg = prevDays.length ? prevDays.reduce(function (s, d) { var e = byDay[d]; return s + ((e && e.mp && e.mp[mp]) || 0); }, 0) / prevDays.length : null;
       if (mpAvg && mpAvg > 0) {
         var mpPct = ((todayMp - mpAvg) / mpAvg) * 100;
         if (mpPct < -20) {
@@ -842,16 +878,13 @@
   // AYLIK HEDEF & MOMENTUM
   // ---------------------------------------------------------------------
   function loadMonthlyMomentum() {
-    fetch('/api/daily-sales?full_history=true&marketplace=' + ai2Mp())
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.error || !data.daily) {
+    getDailySales()
+      .then(function (daily) {
+        if (!daily) {
           safeText('ai2-mom-footnote', 'Yeterli veri yok.');
           return;
         }
-        var daily = data.daily;
-        var byDate = {};
-        daily.forEach(function (d) { byDate[(d.date || '').slice(0, 10)] = d.net_amount || 0; });
+        var byDate = dailyMap(daily, ai2Mp());
 
         var now = new Date();
         var todayStr = localDateStr(now);
@@ -890,6 +923,26 @@
         var projection = dailyAvgThisMonth * daysInMonth;
         safeText('ai2-mom-projection', fmtTL(projection));
         var projDeltaPct = prevMonthTotal > 0 ? ((projection - prevMonthTotal) / prevMonthTotal) * 100 : null;
+        // Hero kutusu: ay sonu tahmini + geçen ay toplamına göre ilerleme.
+        safeText('hero-proj', fmtTL(projection));
+        var projSub = document.getElementById('hero-proj-sub');
+        if (projSub) {
+          projSub.innerHTML = '';
+          if (projDeltaPct !== null) {
+            var t = document.createElement('span');
+            t.className = 'ai2-kpi-trend ' + trendClass(projDeltaPct);
+            t.textContent = pctStr(projDeltaPct);
+            projSub.appendChild(t);
+            projSub.appendChild(document.createTextNode(' geçen ay ' + fmtTL(prevMonthTotal)));
+          }
+        }
+        var bar = document.getElementById('hero-proj-bar');
+        if (bar) {
+          var share = prevMonthTotal > 0 ? thisMonthToDate / prevMonthTotal * 100 : 0;
+          bar.style.width = Math.max(0, Math.min(100, share)) + '%';
+          bar.classList.toggle('is-behind', projDeltaPct !== null && projDeltaPct < 0);
+          bar.parentNode.title = 'Bu ay şu ana kadar geçen ay toplamının %' + share.toFixed(0) + '\'i';
+        }
         var projDeltaEl = document.getElementById('ai2-mom-projection-delta');
         if (projDeltaEl) {
           projDeltaEl.textContent = pctStr(projDeltaPct) + ' geçen aya göre';
@@ -916,11 +969,11 @@
       })
       .catch(function () { safeText('ai2-mom-footnote', 'Veri alınamadı.'); });
 
-    // Hafta günü etkisi için aynı veriden bağımsız (marketplace=all) genel geçmişi de hesapla
-    fetch('/api/daily-sales?full_history=true&marketplace=all')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.error || !data.daily || !data.daily.length) return;
+    // Hafta günü etkisi için aynı veriden (tüm pazaryerleri) genel geçmiş
+    getDailySales()
+      .then(function (daily) {
+        if (!daily || !daily.length) return;
+        var data = { daily: daily };
         var sums = [0, 0, 0, 0, 0, 0, 0];
         var counts = [0, 0, 0, 0, 0, 0, 0];
         var totalSum = 0;
@@ -996,8 +1049,10 @@
 
       window.__ai2SkuInsights = insights;
       renderStockDepletion(insights);
+      todoFromStock(insights);
       renderOpportunities();
     }).catch(function () {
+      setTodo('stock', null);
       safeText('ai2-stock-depletion', 'Veri alınamadı.');
     });
   }
@@ -1032,7 +1087,7 @@
   function renderOpportunities() {
     var oppEl = document.getElementById('ai-opportunities');
     if (!oppEl || !lastOpportunities) return;
-    var opps = lastOpportunities.slice(0, 6);
+    var opps = lastOpportunities.slice(0, 4);
     if (!opps.length) { oppEl.innerHTML = 'Marjı %30 ve üzeri, öne çıkan bir ürün bulunamadı.'; return; }
 
     var insights = window.__ai2SkuInsights || {};
@@ -1073,18 +1128,31 @@
       .then(function (data) {
         var el = document.getElementById('ai2-cashflow');
         if (!el) return;
-        var days = data.days || [];
+        // Endpoint, aralık dışındaki gerçekleşmiş banka ödemelerini (PaymentOrder)
+        // ve gecikmeli tahminleri de bilinçli olarak döndürüyor. Burada yalnızca
+        // [bugün, +14 gün] sayılır; tarihi geçmiş ama henüz yatmamış tahminler
+        // (overdue) ayrıca "gecikmiş" olarak gösterilir.
+        var startKey = localDateStr(today), endKey = localDateStr(in14);
+        var all = data.days || [];
+        var days = all.filter(function (d) { return d.date >= startKey && d.date <= endKey; });
+        var overdueTotal = all.filter(function (d) { return d.date < startKey; }).reduce(function (s, d) {
+          return s + Object.keys(d.byMarketplace || {}).reduce(function (t, mp) {
+            var e = d.byMarketplace[mp] || {};
+            return t + (e.overdue ? (e.lagEstimated || 0) : 0);
+          }, 0);
+        }, 0);
         var unplanned = (data.unplanned && data.unplanned.total) || 0;
-        var total = days.reduce(function (s, d) { return s + (d.total || 0); }, 0) + unplanned;
+        var total = days.reduce(function (s, d) { return s + (d.total || 0); }, 0);
         var orderLineCount = document.getElementById('ai-risks') ? null : null; // bilgi amaçlı, ayrı kaynağa gerek yok
 
-        if (!days.length && !unplanned) {
+        if (!days.length && !unplanned && !overdueTotal) {
+          safeText('hero-cash', fmtTL(0));
           el.innerHTML = '<div class="ai2-anomaly-caption">Önümüzdeki 14 günde planlı/tahmini bir ödeme görünmüyor.</div>';
           return;
         }
 
         var html = '<div class="ai2-cashflow-total"><span class="ai2-momentum-value">' + fmtTL(total) + '</span></div>'
-          + '<div class="ai2-cashflow-sub">Önümüzdeki 14 gün için tahmini + onaylı tahsilat toplamı (bkz. renk kodları: confirmed = kesin, estimated/lagEstimated = tahmini)</div>'
+          + '<div class="ai2-cashflow-sub">Önümüzdeki 14 gün · kesinleşmiş + tahmini tahsilat toplamı</div>'
           + '<div class="ai2-timeline">';
 
         days.filter(function (d) { return d.total > 0; }).slice(0, 8).forEach(function (d) {
@@ -1094,12 +1162,18 @@
           html += '<div class="ai2-timeline-row"><span class="ai2-timeline-date">' + fmtDateShort(d.date) + '</span>' + mpLabel + '<span class="ai2-timeline-amount">' + fmtTL(d.total) + '</span></div>';
         });
         html += '</div>';
+        if (overdueTotal > 0) {
+          html += '<div class="ai2-cashflow-sub" style="margin-top:8px;color:var(--lal-amber)">+ ' + fmtTL(overdueTotal) + ' tahmini ödeme tarihi geçmiş, henüz yatmamış</div>';
+        }
         if (unplanned > 0) {
           html += '<div class="ai2-cashflow-sub" style="margin-top:8px;">+ ' + fmtTL(unplanned) + ' tarihi henüz belirlenememiş bekleyen tutar</div>';
         }
         el.innerHTML = html;
 
         window.__ai2CashflowTotal = total;
+        safeText('hero-cash', fmtTL(total));
+        var next = days.filter(function (d) { return d.total > 0; })[0];
+        safeText('hero-cash-sub', next ? ('Sıradaki: ' + fmtDateShort(next.date) + ' · ' + fmtTL(next.total)) : 'Ödeme takvimi →');
         buildDailyBriefing();
       })
       .catch(function () { safeText('ai2-cashflow', 'Veri alınamadı.'); });
@@ -1115,25 +1189,31 @@
   function buildDailyBriefing() {
     var parts = [];
 
-    var salesTrendText = document.getElementById('ai2-kpi-sales-trend');
-    if (salesTrendText && salesTrendText.textContent && salesTrendText.textContent !== '–') {
-      var isDownSales = salesTrendText.classList.contains('is-down');
-      parts.push({ t: 'Bugünkü satış 7 günlük ortalama' + (isDownSales ? 'nın altında' : 'nın üzerinde') + ' (' + salesTrendText.textContent + ').', tone: isDownSales ? 'down' : 'up' });
+    var salesTrend = document.getElementById('ai2-kpi-sales-trend');
+    if (salesTrend && salesTrend.textContent && salesTrend.textContent !== '–') {
+      var isDownSales = salesTrend.classList.contains('is-down');
+      parts.push({ t: 'Bugünkü satış 7 günlük ortalama' + (isDownSales ? 'nın altında' : 'nın üzerinde') + ' (' + salesTrend.textContent + ').', tone: isDownSales ? 'down' : 'up', href: '#ai-chart-title' });
     }
 
     var anomalyReasons = document.querySelectorAll('#ai2-anomaly-body .ai2-reason-list li');
     if (anomalyReasons.length) {
-      parts.push({ t: 'Olası neden: ' + anomalyReasons[0].textContent, tone: 'warn' });
+      parts.push({ t: 'Olası neden: ' + anomalyReasons[0].textContent, tone: 'warn', href: '#ai2-anomaly-body' });
+    }
+
+    var cmp = document.getElementById('hero-month-cmp');
+    if (cmp && cmp.textContent) {
+      var dn = cmp.classList.contains('is-down');
+      parts.push({ t: 'Bu ay geçen ayın aynı dönemine göre ' + cmp.textContent + (dn ? ' geride.' : ' önde.'), tone: dn ? 'down' : 'up', href: '/aylik-raporlar' });
     }
 
     if (window.__ai2CashflowTotal) {
-      parts.push({ t: 'Önümüzdeki 14 günde toplam ' + fmtTL(window.__ai2CashflowTotal) + ' tahsilat bekleniyor.', tone: 'ok' });
+      parts.push({ t: 'Önümüzdeki 14 günde toplam ' + fmtTL(window.__ai2CashflowTotal) + ' tahsilat bekleniyor.', tone: 'ok', href: '/finans' });
     }
 
     if (lastOpportunities && lastOpportunities.length) {
       var top = lastOpportunities[0];
       var marginPct = (top.margin !== null && top.margin !== undefined) ? Math.round(top.margin * 100) : null;
-      parts.push({ t: 'En önemli fırsat: ' + (top.sku || '') + (marginPct !== null ? (' (%' + marginPct + ' marj)') : '') + '.', tone: 'accent' });
+      parts.push({ t: 'En önemli fırsat: ' + (top.sku || '') + (marginPct !== null ? (' (%' + marginPct + ' marj)') : '') + '.', tone: 'accent', href: '#ai-opportunities' });
     }
 
     var el = document.getElementById('ai2-briefing-text');
@@ -1141,12 +1221,100 @@
       el.textContent = '';
       if (!parts.length) { el.textContent = 'Brifing için henüz yeterli veri yok.'; }
       else parts.forEach(function (t) {
-        var d = document.createElement('div');
+        var d = document.createElement(t.href ? 'a' : 'div');
         d.className = 'ai2-brief-line tone-' + t.tone;
+        if (t.href) d.href = t.href;
         d.textContent = t.t;
         el.appendChild(d);
       });
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // BUGÜN YAPILACAKLAR — paketleme, sorular, yorumlar, stok, maliyet.
+  // Her kaynak bağımsız yüklenir; geldikçe liste yeniden çizilir. Sayısı 0
+  // olan iş gösterilmez. Kritik (kırmızı) olanlar üstte.
+  // ---------------------------------------------------------------------
+  var todoState = {};
+  function daysAgo(iso) {
+    var t = Date.parse(iso);
+    return isNaN(t) ? null : Math.floor((Date.now() - t) / 86400000);
+  }
+  function renderTodo() {
+    var list = document.getElementById('ai2-todo-list');
+    if (!list) return;
+    var order = { crit: 0, warn: 1, info: 2 };
+    var items = Object.keys(todoState).map(function (k) { return todoState[k]; })
+      .filter(function (i) { return i && i.n > 0; })
+      .sort(function (a, b) { return (order[a.tone] - order[b.tone]) || (b.n - a.n); });
+    var pending = ['pack', 'qna', 'reviews', 'stock', 'cost'].some(function (k) { return todoState[k] === undefined; });
+    list.innerHTML = '';
+    items.forEach(function (i) {
+      var li = document.createElement('li');
+      var a = document.createElement('a');
+      a.className = 'ai2-todo-item is-' + i.tone;
+      a.href = i.href;
+      a.innerHTML = '<span class="ai2-todo-n"></span><span><div class="ai2-todo-t"></div><div class="ai2-todo-s"></div></span><span class="ai2-todo-go" aria-hidden="true">›</span>';
+      a.querySelector('.ai2-todo-n').textContent = i.n > 999 ? '999+' : i.n;
+      a.querySelector('.ai2-todo-t').textContent = i.title;
+      a.querySelector('.ai2-todo-s').textContent = i.sub || '';
+      li.appendChild(a);
+      list.appendChild(li);
+    });
+    if (pending) {
+      var sk = document.createElement('li'); sk.className = 'ai2-todo-skel'; list.appendChild(sk);
+    } else if (!items.length) {
+      list.innerHTML = '<li class="ai2-todo-done"><span class="ai2-todo-n" style="background:var(--lal-green-dim);color:var(--lal-green)">✓</span>Bekleyen iş yok — her şey yolunda.</li>';
+    }
+    var crit = items.filter(function (i) { return i.tone === 'crit'; }).length;
+    safeText('ai2-todo-count', items.length ? (items.length + ' iş' + (crit ? ' · ' + crit + ' acil' : '')) : '');
+  }
+  function setTodo(k, v) { todoState[k] = v; renderTodo(); }
+
+  function loadTodo() {
+    // Maliyet/zarar maddeleri alerts.js event'inden gelir; yenilemede korunur.
+    todoState = { cost: todoState.cost, neg: todoState.neg };
+    renderTodo();
+    setTimeout(function () {
+      ['pack', 'qna', 'reviews', 'stock', 'cost'].forEach(function (k) { if (todoState[k] === undefined) todoState[k] = null; });
+      renderTodo();
+    }, 15000);
+    var now = Date.now();
+    var endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
+
+    fetch('/api/paketlenecekler').then(function (r) { return r.json(); }).then(function (d) {
+      var rows = d.rows || [];
+      var late = rows.filter(function (r) { return r.due_ms && r.due_ms < now; }).length;
+      var today = rows.filter(function (r) { return r.due_ms && r.due_ms >= now && r.due_ms <= endOfDay.getTime(); }).length;
+      var bits = [];
+      if (late) bits.push(late + ' gecikmiş');
+      if (today) bits.push(today + ' bugün kargoya verilmeli');
+      if (!bits.length && rows.length) bits.push('Kargoya verilmeyi bekliyor');
+      if (d.errors && Object.keys(d.errors).length) bits.push('bazı pazaryerleri okunamadı');
+      setTodo('pack', { n: rows.length, title: 'Paketlenecek sipariş', sub: bits.join(' · '), href: '/paketlenecekler', tone: late || today ? 'crit' : 'warn' });
+    }).catch(function () { setTodo('pack', null); });
+
+    fetch('/api/qna/overview').then(function (r) { return r.json(); }).then(function (d) {
+      var qs = (d.questions || []).filter(function (q) { return !q.sent; });
+      var n = (d.stats && d.stats.pendingCount) || qs.length;
+      var oldest = qs.reduce(function (m, q) { var a = daysAgo(q.source_created_at); return a !== null && a > m ? a : m; }, 0);
+      var sub = oldest >= 1 ? 'En eskisi ' + oldest + ' gündür bekliyor' : 'Hepsi son 24 saatte geldi';
+      setTodo('qna', { n: n, title: 'Cevap bekleyen soru', sub: sub, href: '/musteri-sorulari', tone: oldest >= 2 ? 'crit' : 'warn' });
+    }).catch(function () { setTodo('qna', null); });
+
+    fetch('/api/reviews/overview').then(function (r) { return r.json(); }).then(function (d) {
+      var low = (d.reviews || []).filter(function (rv) { var a = daysAgo(rv.created_at); return rv.star && rv.star <= 3 && a !== null && a <= 7; });
+      setTodo('reviews', { n: low.length, title: 'Düşük puanlı yorum (7 gün)', sub: '3 yıldız ve altı — yanıtla veya incele', href: '/yorumlar', tone: 'warn' });
+    }).catch(function () { setTodo('reviews', null); });
+  }
+
+  // Stok ve maliyet maddeleri diğer yükleyicilerden beslenir.
+  function todoFromStock(insights) {
+    var risky = Object.keys(insights || {}).map(function (k) { return insights[k]; })
+      .filter(function (i) { return i.depletionDays !== null && i.depletionDays < 8; });
+    var crit = risky.filter(function (i) { return i.depletionDays < 5; }).length;
+    var first = risky.sort(function (a, b) { return a.depletionDays - b.depletionDays; })[0];
+    setTodo('stock', { n: risky.length, title: 'Stoğu bitti / bitmek üzere', sub: first ? (first.sku + (first.depletionDays <= 0 ? ' stokta yok — satış kaçıyor' : ' ~' + first.depletionDays + ' gün içinde biter')) : '', href: '/stok', tone: crit ? 'crit' : 'warn' });
   }
 
   // ---------------------------------------------------------------------
@@ -1158,24 +1326,12 @@
     loadMonthlyMomentum();
     loadSalesVelocity();
     loadCashFlow();
+    loadTodo();
   }
 
   (function () {
     loadAllAiCockpitData();
     document.addEventListener('lal:data-refresh', loadAllAiCockpitData);
-
-    fetch('/api/product-stock')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        var el = document.getElementById('ai-critical-stock');
-        if (!el) return;
-        var low = (data.items || []).filter(function (i) { return i.lowStock; });
-        if (!low.length) { el.textContent = 'Şu anda düşük stoklu ürün yok.'; return; }
-        el.innerHTML = low.slice(0, 6).map(function (i) {
-          return '<div class="lal-list-row">' + i.sku + ' — <span class="is-danger">' + i.quantity + ' adet kaldı</span></div>';
-        }).join('');
-      })
-      .catch(function () {});
   })();
 
   // ---------------------------------------------------------------------
@@ -1206,51 +1362,14 @@
         : 'Şu an için bir risk görünmüyor — tüm ürünlerin maliyeti tanımlı ve marjlar makul.';
     }
 
+    var mc = (d.missingCost || []).length, neg = (d.negative || []).length;
+    setTodo('cost', mc ? { n: mc, title: 'Maliyeti girilmemiş ürün', sub: 'Kâr hesabına katılmıyor', href: '/urunler?filter=missing-cost', tone: 'warn' } : null);
+    if (neg) setTodo('neg', { n: neg, title: 'Zararına satılan ürün', sub: 'Negatif marj — fiyatı kontrol et', href: '/urunler?filter=negative', tone: 'crit' });
+    else setTodo('neg', null);
     lastOpportunities = (d.opportunities || []);
     renderOpportunities();
     buildDailyBriefing();
   });
 
-  // ---------------------------------------------------------------------
-  // LAL AI ASİSTAN — UI iskeleti. Gerçek AI çağrısı YOK (spec gereği).
-  // Örnek prompt butonları input'u dolduruyor; gönder tuşu statik bir
-  // "yakında aktif olacak" mesajı ekliyor. İleride bu fonksiyonun içi
-  // gerçek bir /api/ai-assistant çağrısıyla değiştirilecek.
-  // ---------------------------------------------------------------------
-  (function () {
-    var input = document.getElementById('ai2-chat-input');
-    var sendBtn = document.getElementById('ai2-chat-send');
-    var body = document.getElementById('ai2-chat-body');
-    if (!input || !sendBtn || !body) return;
-
-    document.querySelectorAll('.ai2-chat-prompt-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        input.value = btn.dataset.prompt || '';
-        input.focus();
-      });
-    });
-
-    function sendChatPlaceholder() {
-      var text = input.value.trim();
-      if (!text) return;
-      var msg = document.createElement('div');
-      msg.className = 'ai2-chat-msg';
-      msg.textContent = text;
-      body.appendChild(msg);
-
-      var reply = document.createElement('div');
-      reply.className = 'ai2-chat-msg-reply';
-      reply.textContent = 'LAL AI Asistan henüz aktif değil — bu özellik yakında gerçek verilerinle konuşabilecek.';
-      body.appendChild(reply);
-
-      input.value = '';
-      body.scrollTop = body.scrollHeight;
-    }
-
-    sendBtn.addEventListener('click', sendChatPlaceholder);
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') sendChatPlaceholder();
-    });
-  })();
 </script>
 {% endblock %}

@@ -210,3 +210,6 @@
 .mpx-wrap { position: relative; margin-top: var(--lal-space-4); height: 480px; }
 .mpx-wrap-rings { height: 380px; }
 .mpx-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* Devam eden ay notu (tooltip) */
+.mpc-tooltip-live { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--lal-border-soft); font-size: 11.5px; line-height: 1.4; color: var(--lal-amber); max-width: 240px; }

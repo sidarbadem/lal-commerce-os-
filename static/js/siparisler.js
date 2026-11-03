@@ -8,7 +8,11 @@
 
   let currentPage = 1;
   const PAGE_SIZE = 50;
-  const ORDER_COLUMN_COUNT = 10; // ▸, Görsel, Tarih, Sipariş No, Pazaryeri, Müşteri, Durum, Kargo, Net Tutar, Net Kâr
+  const ORDER_COLUMN_COUNT = 10; // ▸, Ürün·Tarih, Kanal, Durum, Satış, Komisyon, Kargo, Maliyet, Net Kâr, Marj
+  // 02.11.2026: kâr filtresi + sıralama SUNUCUDA (sayfalamadan önce) yapılıyor.
+  let profitFilter = '';
+  let sortKey = 'date';
+  let sortDir = 'desc';
 
   function marketplaceBadge(marketplace) {
     // Faz 8.4: eskiden burada legacy .mp-badge/.mp-trendyol/.mp-hepsiburada
@@ -45,24 +49,46 @@
   //   ortalamasıyla (ya da hiç geçmiş yoksa sabit tahminle) hesaplanmış demektir
   //   — bu da '~' ön ekini tetikler. profitEstimated VE cargoEstimated aynı anda
   //   true olabilir; tooltip ikisini de tek tek belirtir.
-  function netProfitCell(o) {
-    if (o.netProfit === null || o.netProfit === undefined) {
-      return '<span style="color:var(--text-muted);" title="Bu sipariş için ürün maliyeti tanımlı değil, kâr hesaplanamıyor.">—</span>';
-    }
-    const cls = o.netProfit > 0 ? 'lal-profit-pos' : (o.netProfit < 0 ? 'lal-profit-neg' : '');
-    if (o.isManual) {
-      return `<span class="${cls}" title="Manuel sipariş: satış − alış maliyeti − komisyon − kargo">${fmtTL2(o.netProfit)}</span>`;
-    }
+  function estimateReasons(o) {
     const reasons = [];
+    if (o.isManual) return reasons;
     if (o.profitEstimated) {
       reasons.push('Finans API\'de henüz gerçek settlement kaydı yok, satır fiyatı ve tahmini komisyon oranıyla hesaplandı.');
     }
     if (o.cargoEstimated) {
       reasons.push('Kargo faturası henüz senkron olmadı, bu ürünün (veya genel) geçmiş ortalama kargo bedeliyle tahmin edildi — fatura gelince otomatik güncellenir.');
     }
-    const prefix = (o.profitEstimated || o.cargoEstimated) ? '~' : '';
+    return reasons;
+  }
+
+  function netProfitCell(o) {
+    if (o.netProfit === null || o.netProfit === undefined) {
+      return '<span class="op-missing" title="Bu sipariş için ürün maliyeti tanımlı değil, kâr hesaplanamıyor.">maliyet yok</span>';
+    }
+    const cls = o.netProfit > 0 ? 'pos' : (o.netProfit < 0 ? 'neg' : '');
+    if (o.isManual) {
+      return `<span class="op-profit ${cls}" title="Manuel sipariş: satış − alış maliyeti − komisyon − kargo">${fmtTL2(o.netProfit)}</span>`;
+    }
+    const reasons = estimateReasons(o);
+    const prefix = reasons.length ? '<span class="op-est">~</span>' : '';
     const title = reasons.length ? `Tahmini: ${reasons.join(' ')}` : 'Gerçek: Finans API settlement kaydına ve gerçek kargo faturasına göre hesaplandı.';
-    return `<span class="${cls}" title="${title}">${prefix}${fmtTL2(o.netProfit)}</span>`;
+    return `<span class="op-profit ${cls}" title="${escHtml(title)}">${prefix}${fmtTL2(o.netProfit)}</span>`;
+  }
+
+  function marginPill(m) {
+    if (m === null || m === undefined) return '<span class="op-margin none">—</span>';
+    const cls = m >= 25 ? 'good' : (m >= 10 ? 'mid' : 'bad');
+    return `<span class="op-margin ${cls}">%${Number(m).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</span>`;
+  }
+
+  const fmtTL0 = (n) => n === null || n === undefined ? '—' : '₺' + Number(n).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+  const pctOf = (part, whole) => (whole > 0 && part != null) ? Math.abs(part) / whole * 100 : null;
+  const fmtPct = (p) => p === null ? '' : '%' + p.toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+
+  function costCell(v, est) {
+    if (v === null || v === undefined) return '<span class="op-cost">—</span>';
+    if (!v) return '<span class="op-cost">₺0</span>';
+    return `<span class="op-cost">${est ? '<span class="op-est">~</span>' : ''}−${fmtTL2(Math.abs(v))}</span>`;
   }
 
   // Ürün görseli SADECE Trendyol'dan senkronize ediliyor ("Ürün Ayarları"
@@ -75,28 +101,78 @@
   // siparişteki ilk görseli bulunan ürün gösterilir (çoğu sipariş tek
   // kalemli; birden fazla kalem varsa ilk kalemin görseli temsilen kullanılır).
   function orderThumb(lines) {
-    const boxStyle = 'width:32px;height:32px;border-radius:6px;flex:none;';
     const withImage = (lines || []).find(ln => ln.imageUrl);
     if (!withImage) {
-      return `<div style="${boxStyle}background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;" title="Görsel yok (bu SKU için Trendyol'dan senkronize edilmiş bir ürün görseli bulunamadı)">—</div>`;
+      return '<div class="op-thumb" title="Görsel yok (bu SKU için Trendyol\'dan senkronize edilmiş bir ürün görseli bulunamadı)">—</div>';
     }
-    const alt = (withImage.productName || '').replace(/"/g, '&quot;');
-    return `<img src="${withImage.imageUrl}" alt="${alt}" style="${boxStyle}object-fit:cover;border:1px solid var(--border);background:var(--surface-2);" onerror="this.outerHTML='<div style=&quot;${boxStyle}background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:10px;&quot; title=&quot;Görsel yüklenemedi&quot;>—</div>';">`;
+    const alt = escHtml(withImage.productName || '');
+    return `<img class="op-thumb" src="${escHtml(withImage.imageUrl)}" alt="${alt}" loading="lazy" onerror="this.outerHTML='<div class=&quot;op-thumb&quot; title=&quot;Görsel yüklenemedi&quot;>—</div>';">`;
+  }
+
+  function productCell(o) {
+    const lines = o.lines || [];
+    const first = lines[0];
+    const qty = lines.reduce((a, ln) => a + (Number(ln.quantity) || 0), 0);
+    let name = first ? (first.productName || first.merchantSku || '—') : '—';
+    const extra = lines.length > 1 ? ` <span class="op-sub" style="display:inline">+${lines.length - 1} ürün</span>` : '';
+    const qtyTxt = qty > 1 ? ` ×${qty}` : '';
+    return `<div class="op-product">${orderThumb(lines)}<div class="op-product-text">
+      <span class="op-product-name" title="${escHtml(name)}">${escHtml(name)}${qtyTxt}${extra}</span>
+      <span class="op-product-meta">${fmtDateTime(o.orderDate)} · ${escHtml(o.orderNumber) || '—'}</span>
+    </div></div>`;
+  }
+
+  // Satır açılınca: ciro → giderler → net kâr şelalesi (bar uzunluğu ciroya oranla).
+  function renderWaterfall(o) {
+    const rev = o.revenue;
+    if (rev === null || rev === undefined) {
+      return '<div class="op-wf-note" style="color:var(--lal-text-muted)">Bu sipariş için kâr dökümü yok (iptal / henüz finans verisi oluşmamış olabilir).</div>';
+    }
+    const commission = (o.commission || 0) + (o.serviceFee || 0);
+    const rows = [
+      ['Satış (KDV hariç)', rev, 'c-profit', false, false],
+      ['Komisyon' + (o.serviceFee ? ' + hizmet' : ''), -commission, 'c-comm', o.profitEstimated, false],
+      ['Kargo', -(o.cargo || 0), 'c-cargo', o.cargoEstimated, false],
+      ['Ürün maliyeti', o.cogs === null ? null : -(o.cogs || 0), 'c-cogs', false, false],
+    ];
+    if (Math.abs(o.other || 0) >= 0.05) rows.push(['İade / düzeltme', o.other, 'c-other', false, false]);
+    const body = rows.map(([lbl, v, c, est]) => {
+      const w = v === null ? 0 : Math.min(100, pctOf(v, rev) || 0);
+      const amt = v === null ? '<span class="op-missing">maliyet yok</span>'
+        : `${est ? '<span class="op-est">~</span>' : ''}${v < 0 ? '−' : ''}${fmtTL2(Math.abs(v))}`;
+      return `<div class="op-wf-row"><span class="lbl">${lbl}</span><span class="bar"><i class="${c}" style="width:${w}%;${c === 'c-profit' ? 'opacity:.35' : ''}"></i></span><span class="amt">${amt}</span><span class="pct">${v === null || c === 'c-profit' ? '' : fmtPct(pctOf(v, rev))}</span></div>`;
+    }).join('');
+    const np = o.netProfit;
+    const npCls = np === null ? '' : (np >= 0 ? 'pos' : 'neg');
+    const total = `<div class="op-wf-row total"><span class="lbl">Net kâr</span><span class="bar"><i class="c-profit" style="width:${np === null ? 0 : Math.min(100, Math.max(0, pctOf(np, rev) || 0))}%;${np < 0 ? 'background:var(--lal-red)' : ''}"></i></span><span class="amt op-profit ${npCls}">${np === null ? '—' : fmtTL2(np)}</span><span class="pct">${marginPill(o.margin)}</span></div>`;
+    const reasons = estimateReasons(o);
+    const note = reasons.length ? `<div class="op-wf-note">~ ${escHtml(reasons.join(' '))}</div>` : '';
+    return `<h4>Kâr dökümü</h4><div class="op-wf">${body}${total}</div>${note}`;
+  }
+
+  function renderDetail(o) {
+    const meta = `<div class="op-meta">
+      <span>Müşteri <b>${escHtml(o.customer) || '—'}</b></span>
+      ${o.isManual ? '' : `<span>Kargo <b>${escHtml(o.cargoProvider) || '—'}</b></span>`}
+      <span>Tahsil edilen (KDV dahil) <b>${fmtTL2(o.netAmount)}</b></span>
+    </div>`;
+    const right = o.isManual ? renderManualDetail(o) : renderOrderLines(o.lines);
+    return `<div class="op-detail"><div>${renderWaterfall(o)}</div><div>${meta}<h4>Ürünler</h4>${right}</div></div>`;
   }
 
   function renderOrderLines(lines) {
     if (!lines || !lines.length) return '<div style="color:var(--text-muted); font-size:12.5px;">Satır detayı yok.</div>';
     return `
-      <table>
-        <thead><tr><th>SKU</th><th>Ürün</th><th>Adet</th><th>Birim Fiyat</th><th>Komisyon %</th></tr></thead>
+      <table class="op-lines">
+        <thead><tr><th>SKU</th><th>Ürün</th><th class="num">Adet</th><th class="num">Birim Fiyat</th><th class="num">Komisyon %</th></tr></thead>
         <tbody>
           ${lines.map(ln => `
             <tr>
-              <td>${ln.merchantSku || '—'}</td>
-              <td>${ln.productName || '—'}</td>
-              <td>${ln.quantity ?? '—'}</td>
-              <td>${fmtTL2(ln.lineUnitPrice)}</td>
-              <td>${ln.commissionRate ?? '—'}</td>
+              <td>${escHtml(ln.merchantSku) || '—'}</td>
+              <td>${escHtml(ln.productName) || '—'}</td>
+              <td class="num">${ln.quantity ?? '—'}</td>
+              <td class="num">${fmtTL2(ln.lineUnitPrice)}</td>
+              <td class="num">${ln.commissionRate ?? '—'}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -107,36 +183,85 @@
   function renderOrders(orders) {
     const tbody = document.getElementById('orders-tbody');
     if (!orders.length) {
-      tbody.innerHTML = emptyStateRow(ORDER_COLUMN_COUNT, 'Bu aralıkta sipariş bulunamadı.');
+      const msg = profitFilter ? 'Bu filtreye uyan sipariş yok.' : 'Bu aralıkta sipariş bulunamadı.';
+      tbody.innerHTML = emptyStateRow(ORDER_COLUMN_COUNT, msg);
       return;
     }
-    tbody.innerHTML = orders.map((o, i) => `
-      <tr class="order-row" data-idx="${i}">
-        <td>▸</td>
-        <td>${orderThumb(o.lines)}</td>
-        <td>${fmtDateTime(o.orderDate)}</td>
-        <td>${escHtml(o.orderNumber) || '—'}</td>
+    tbody.innerHTML = orders.map((o, i) => {
+      const hasRev = o.revenue !== null && o.revenue !== undefined;
+      const sale = hasRev
+        ? `${fmtTL2(o.revenue)}<span class="op-sub">KDV dahil ${fmtTL2(o.netAmount)}</span>`
+        : `${fmtTL2(o.netAmount)}<span class="op-sub">KDV dahil</span>`;
+      const comm = hasRev ? (o.commission || 0) + (o.serviceFee || 0) : null;
+      return `
+      <tr class="order-row" data-idx="${i}" tabindex="0" aria-expanded="false">
+        <td class="op-caret">▸</td>
+        <td>${productCell(o)}</td>
         <td>${marketplaceBadge(o.marketplace)}</td>
-        <td>${escHtml(o.customer) || '—'}</td>
         <td>${statusPill(o.status)}</td>
-        <td>${o.cargoProvider || '—'}</td>
-        <td>${fmtTL2(o.netAmount)}</td>
-        <td>${netProfitCell(o)}</td>
+        <td class="num">${sale}</td>
+        <td class="num">${costCell(comm, o.profitEstimated)}</td>
+        <td class="num">${costCell(hasRev ? o.cargo : null, o.cargoEstimated)}</td>
+        <td class="num">${costCell(hasRev ? o.cogs : null, false)}</td>
+        <td class="num">${netProfitCell(o)}</td>
+        <td class="num">${marginPill(o.margin)}</td>
       </tr>
       <tr class="detail-row" id="detail-${i}">
-        <td colspan="${ORDER_COLUMN_COUNT}"><div class="detail-inner">${o.isManual ? renderManualDetail(o) : renderOrderLines(o.lines)}</div></td>
-      </tr>
-    `).join('');
+        <td colspan="${ORDER_COLUMN_COUNT}">${renderDetail(o)}</td>
+      </tr>`;
+    }).join('');
 
     tbody.querySelectorAll('tr.order-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const idx = row.dataset.idx;
-        const detail = document.getElementById(`detail-${idx}`);
-        const arrow = row.querySelector('td:first-child');
-        detail.classList.toggle('open');
-        arrow.textContent = detail.classList.contains('open') ? '▾' : '▸';
-      });
+      const toggle = () => {
+        const detail = document.getElementById(`detail-${row.dataset.idx}`);
+        const open = detail.classList.toggle('open');
+        row.classList.toggle('is-open', open);
+        row.setAttribute('aria-expanded', String(open));
+        row.querySelector('.op-caret').textContent = open ? '▾' : '▸';
+      };
+      row.addEventListener('click', toggle);
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
     });
+  }
+
+  function renderSummary(sm) {
+    const box = document.getElementById('op-summary');
+    if (!box) return;
+    if (!sm) { box.hidden = true; return; }
+    box.hidden = false;
+    const rev = sm.revenue || 0;
+    const comm = (sm.commission || 0) + (sm.serviceFee || 0);
+    const kpi = (label, val, sub, extra = '') =>
+      `<div class="op-kpi${extra}"><span>${label}</span><b${extra.includes('hero') ? ` class="${sm.netProfit >= 0 ? 'pos' : 'neg'}"` : ''}>${val}</b><small>${sub}</small></div>`;
+    document.getElementById('op-kpis').innerHTML = [
+      kpi('Ciro (KDV hariç)', fmtTL0(rev), `${sm.orderCount} sipariş`),
+      kpi('Komisyon + Hizmet', '−' + fmtTL0(comm), fmtPct(pctOf(comm, rev)) + ' ciro'),
+      kpi('Kargo', '−' + fmtTL0(sm.cargo), fmtPct(pctOf(sm.cargo, rev)) + ' ciro'),
+      kpi('Ürün Maliyeti', '−' + fmtTL0(sm.cogs), fmtPct(pctOf(sm.cogs, rev)) + ' ciro'),
+      kpi('Net Kâr', fmtTL0(sm.netProfit), sm.margin === null ? '—' : `marj ${fmtPct(sm.margin)}`, ' op-kpi-hero'),
+    ].join('');
+
+    const other = -(sm.other || 0); // pozitif = gider
+    const parts = [
+      ['c-cogs', 'Ürün maliyeti', sm.cogs],
+      ['c-comm', 'Komisyon + hizmet', comm],
+      ['c-cargo', 'Kargo', sm.cargo],
+      ['c-other', 'İade / düzeltme', other > 0 ? other : 0],
+      ['c-profit', 'Net kâr', Math.max(0, sm.netProfit || 0)],
+    ].filter(p => p[2] > 0);
+    const sum = parts.reduce((a, p) => a + p[2], 0) || 1;
+    document.getElementById('op-split').innerHTML = parts.map(([c, , v]) => `<i class="${c}" style="flex-grow:${v / sum}"></i>`).join('');
+    document.getElementById('op-split-legend').innerHTML = parts.map(([c, l, v]) =>
+      `<span><i class="${c}"></i>${l} <b>${fmtPct(v / sum * 100)}</b></span>`).join('');
+
+    const notes = [];
+    if (sm.missingCostCount) notes.push(`${sm.missingCostCount} siparişin ürün maliyeti tanımlı değil, toplama katılmadı`);
+    if (sm.estimatedCount) notes.push(`${sm.estimatedCount} sipariş tahmini komisyon/kargo içeriyor`);
+    if (other < 0) notes.push(`iade/düzeltme etkisi +${fmtTL0(-other)}`);
+    document.getElementById('op-summary-note').textContent = notes.length ? notes.join(' · ') + '.' : '';
+    const setChip = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n ? n : ''; };
+    setChip('chip-loss', sm.lossCount);
+    setChip('chip-missing', sm.missingCostCount);
   }
 
   function escHtml(s) {
@@ -154,7 +279,7 @@
       </tr>`).join('');
     const note = o.notes ? `<div class="manual-detail-note">Not: ${escHtml(o.notes)}</div>` : '';
     return `
-      <table>
+      <table class="op-lines">
         <thead><tr><th>SKU</th><th>Ürün</th><th>Adet</th><th>Birim Satış</th><th>Birim Maliyet</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -188,7 +313,7 @@
     // gerçek satırların şekline yakın iskelet (skeleton) satırlar koyuyoruz.
     safeDisplay('orders-loading', 'none');
     safeDisplay('orders-table-wrap', 'block');
-    document.getElementById('orders-tbody').innerHTML = skeletonTableRows(ORDER_COLUMN_COUNT, 6, [4, 6, 16, 14, 10, 14, 10, 12, 10, 10]);
+    document.getElementById('orders-tbody').innerHTML = skeletonTableRows(ORDER_COLUMN_COUNT, 6, [2, 28, 8, 8, 10, 9, 8, 9, 10, 6]);
     document.getElementById('pagination').classList.add('is-hidden');
     hideError();
 
@@ -202,6 +327,8 @@
     if (q) params.set('q', q);
     const mpSel = document.getElementById('marketplace-select');
     if (mpSel && mpSel.value) params.set('marketplace', mpSel.value);
+    if (profitFilter) params.set('profit_filter', profitFilter);
+    if (sortKey !== 'date' || sortDir !== 'desc') { params.set('sort', sortKey); params.set('dir', sortDir); }
 
     try {
       const res = await fetch(`/api/orders?${params.toString()}`);
@@ -211,6 +338,7 @@
         document.getElementById('orders-tbody').innerHTML = errorStateRow(ORDER_COLUMN_COUNT, data.error);
         return;
       }
+      renderSummary(data.summary);
       renderOrders(data.orders);
       document.getElementById('result-note').textContent = `${data.start_date} — ${data.end_date} arası, toplam ${data.total} sipariş bulundu.`;
       renderPagination(data.total, data.page, data.page_size);
@@ -233,6 +361,30 @@
     if (q) params.set('q', q);
     window.location.href = `/api/orders/export?${params.toString()}`;
   });
+
+  document.querySelectorAll('#op-chips .op-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      profitFilter = btn.dataset.filter || '';
+      document.querySelectorAll('#op-chips .op-chip').forEach(b => b.classList.toggle('is-active', b === btn));
+      loadOrders(1);
+    });
+  });
+
+  function paintSort() {
+    document.querySelectorAll('.op-sort').forEach(b => {
+      if (b.dataset.sort === sortKey) b.dataset.dir = sortDir; else delete b.dataset.dir;
+    });
+  }
+  document.querySelectorAll('.op-sort').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.sort;
+      if (sortKey === key) sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+      else { sortKey = key; sortDir = 'desc'; }
+      paintSort();
+      loadOrders(1);
+    });
+  });
+  paintSort();
 
   let searchTimeout;
   onExist('search-input', 'input', () => {

@@ -8,10 +8,15 @@
     'ai2-kpi-sales-value', 'ai2-kpi-profit-value', 'ai2-kpi-orders-value', 'ai2-kpi-margin-value'];
 
   function parse(t) {
-    var m = String(t).trim().match(/^(-?)(₺?)\s*(-?)([\d.,]+)\s*(%?)$/);
+    var m = String(t).trim().match(/^(-?)(₺|%)?\s*(-?)([\d.,]+)\s*(%?)$/);
     if (!m) return null;
-    var pct = m[5] === '%', raw = m[4], num, dec = 0;
-    if (pct) {
+    // Türkçe yüzde "%20,5" (önde, virgüllü) ve eski "20.5%" biçimi.
+    var lead = m[2] === '%', pct = lead || m[5] === '%', raw = m[4], num, dec = 0;
+    if (lead) {
+      var lc = raw.indexOf(',');
+      dec = lc < 0 ? 0 : raw.length - lc - 1;
+      num = parseFloat(raw.replace(/\./g, '').replace(',', '.'));
+    } else if (pct) {
       num = parseFloat(raw);
       var i = raw.indexOf('.');
       dec = i < 0 ? 0 : raw.length - i - 1;
@@ -22,11 +27,12 @@
     }
     if (isNaN(num)) return null;
     var neg = m[1] === '-' || m[3] === '-';
-    return { n: neg ? -num : num, cur: m[2] === '₺', pct: pct, dec: dec, post: m[3] === '-' };
+    return { n: neg ? -num : num, cur: m[2] === '₺', pct: pct, lead: lead, dec: dec, post: m[3] === '-' };
   }
 
   function fmt(o, v) {
     var a = Math.abs(v), body;
+    if (o.lead) return (v < 0 ? '-' : '') + '%' + a.toFixed(o.dec).replace('.', ',');
     if (o.pct) body = a.toFixed(o.dec) + '%';
     else body = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: o.dec, maximumFractionDigits: o.dec }).format(a);
     var neg = v < 0;

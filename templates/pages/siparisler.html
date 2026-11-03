@@ -1,18 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Siparişler — LAL{% endblock %}
 {% block page_title %}Siparişler{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/manuel-siparis.css') }}">{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/manuel-siparis.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/siparisler.css') }}">
+{% endblock %}
 
 {% block content %}
-  <section class="lal-page-intro">
-    <p>Sipariş operasyonu</p>
-    <h1>Her sipariş, <strong>aynı kontrol çizgisinde.</strong></h1>
-    <span>Arama, takip ve aksiyon için sade bir çalışma yüzeyi.</span>
-  </section>
-  <div class="panel" id="details-orders">
-    <div class="panel-header-row">
-      <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/></svg> Sipariş Listesi</h2>
+  {# 02.11.2026: Kâr odaklı sipariş ekranı — üstte dönem özeti, tabloda kalem
+     kalem döküm, satır açılınca şelale. Tüm tutarlar KDV hariç (finance_engine
+     'profit' tabanı); satır altında KDV dahil tahsil edilen tutar da var. #}
+  <section class="op-summary" id="op-summary" aria-label="Dönem kâr özeti">
+    <div class="op-kpis" id="op-kpis">
+      {% for label in ['Ciro', 'Komisyon + Hizmet', 'Kargo', 'Ürün Maliyeti', 'Net Kâr'] %}
+      <div class="op-kpi{% if loop.last %} op-kpi-hero{% endif %}"><span>{{ label }}</span><b><i class="lal-skeleton op-sk"></i></b><small>&nbsp;</small></div>
+      {% endfor %}
     </div>
+    <div class="op-split" id="op-split" aria-hidden="true"></div>
+    <div class="op-split-legend" id="op-split-legend"></div>
+    <p class="op-summary-note" id="op-summary-note"></p>
+  </section>
+
+  <div class="panel" id="details-orders">
     <div class="details-body">
       <div class="lal-toolbar">
         <input type="text" id="search-input" placeholder="Sipariş no / müşteri ara…">
@@ -37,10 +46,28 @@
         <button id="manual-add-btn" class="lal-btn" type="button">＋ Manuel sipariş ekle</button>
         <button id="export-btn" class="lal-btn lal-btn-secondary" type="button">⬇ Excel'e Aktar</button>
       </div>
+      <div class="op-chips" id="op-chips" role="group" aria-label="Kâr filtresi">
+        <button type="button" class="op-chip is-active" data-filter="">Tümü</button>
+        <button type="button" class="op-chip" data-filter="loss">Zararlı <em id="chip-loss"></em></button>
+        <button type="button" class="op-chip" data-filter="low_margin">Düşük marj (&lt;%10)</button>
+        <button type="button" class="op-chip" data-filter="missing_cost">Maliyeti eksik <em id="chip-missing"></em></button>
+        <span class="op-chips-note">Tutarlar KDV hariç · <span class="op-est">~</span> tahmini</span>
+      </div>
       <p class="panel-note" id="result-note">Yükleniyor…</p>
-      <div id="orders-table-wrap">
-        <table>
-          <thead><tr><th></th><th></th><th>Tarih</th><th>Sipariş No</th><th>Pazaryeri</th><th>Müşteri</th><th>Durum</th><th>Kargo</th><th>Net Tutar</th><th>Net Kâr</th></tr></thead>
+      <div id="orders-table-wrap" class="op-table-wrap">
+        <table class="op-table">
+          <thead><tr>
+            <th></th>
+            <th><button type="button" class="op-sort" data-sort="date">Ürün · Tarih</button></th>
+            <th>Kanal</th>
+            <th>Durum</th>
+            <th class="num"><button type="button" class="op-sort" data-sort="revenue">Satış</button></th>
+            <th class="num">Komisyon</th>
+            <th class="num">Kargo</th>
+            <th class="num">Maliyet</th>
+            <th class="num"><button type="button" class="op-sort" data-sort="profit">Net Kâr</button></th>
+            <th class="num"><button type="button" class="op-sort" data-sort="margin">Marj</button></th>
+          </tr></thead>
           <tbody id="orders-tbody"></tbody>
         </table>
       </div>

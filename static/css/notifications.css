@@ -27,6 +27,8 @@
 }
 .lal-nicon svg { width: 15px; height: 15px; }
 .lal-nicon.is-review { color: var(--lal-amber); }
+.lal-nicon.is-order_cancelled { color: var(--lal-red, #ef6a6a); }
+.lal-nicon.is-order_prepared { color: var(--lal-green); }
 .lal-nicon.is-profit_final { color: var(--lal-green); }
 
 .lal-nstrip {
