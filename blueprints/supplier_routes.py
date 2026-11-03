@@ -58,7 +58,12 @@ def pay_supplier(tedarikci_id):
     except (KeyError, TypeError, ValueError):
         return jsonify({"error": "'tutar' zorunlu ve sayısal olmalı."}), 400
     aciklama = data.get("aciklama", "")
-    add_supplier_payment(tedarikci_id, tutar, aciklama)
+    if tutar <= 0:
+        return jsonify({"error": "Ödeme tutarı pozitif olmalı."}), 400
+    try:
+        add_supplier_payment(tedarikci_id, tutar, aciklama, data.get("tarih") or None)
+    except ValueError:
+        return jsonify({"error": "'tarih' YYYY-MM-DD olmalı."}), 400
     return jsonify({"ok": True})
 
 
@@ -149,3 +154,70 @@ def backfill():
     bunu çağır. Tüm order_lines'ı tarar, idempotenttir."""
     taranan = backfill_supplier_debt()
     return jsonify({"ok": True, "taranan_satir": taranan, "items": list_suppliers()})
+
+
+# ---------------------------------------------------------------- Faz 1 / Aşama 2
+# Vade, açılış, mutabakat (bkz. supplier_ledger.py)
+
+import supplier_ledger  # noqa: E402
+from database import get_connection  # noqa: E402
+
+
+@bp.route("/api/tedarikciler/<int:tedarikci_id>/ozet", methods=["GET"])
+def supplier_summary(tedarikci_id):
+    with get_connection() as conn:
+        return jsonify({
+            "bakiye": supplier_ledger.balance(conn, tedarikci_id),
+            "vade": supplier_ledger.due_buckets(conn, tedarikci_id),
+            "acikBorclar": [{"vade": d, "tutar": a} for d, a in supplier_ledger.open_obligations(conn, tedarikci_id)],
+            "mutabakat": supplier_ledger.reconciliation(conn, tedarikci_id),
+            "hareketler": supplier_ledger.ledger(conn, tedarikci_id),
+            "otomatikBaslangic": supplier_ledger.LEDGER_START.isoformat(),
+        })
+
+
+@bp.route("/api/tedarikciler/<int:tedarikci_id>/hareket", methods=["POST"])
+def supplier_add_movement(tedarikci_id):
+    """Elle hareket: tip acilis / duzeltme (ödeme için /odeme)."""
+    d = request.get_json(silent=True) or {}
+    try:
+        with get_connection() as conn:
+            new_id = supplier_ledger.add_movement(conn, tedarikci_id, d.get("tip"), d["tutar"], d.get("aciklama", ""),
+                                                  d["tarih"], d.get("vade_tarihi") or None)
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "id": new_id})
+
+
+@bp.route("/api/tedarikciler/hareket/<int:hareket_id>/vade", methods=["POST"])
+def supplier_movement_due(hareket_id):
+    d = request.get_json(silent=True) or {}
+    try:
+        with get_connection() as conn:
+            supplier_ledger.set_movement_due(conn, hareket_id, d["vade_tarihi"])
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/tedarikciler/<int:tedarikci_id>/ay-vade", methods=["POST"])
+def supplier_month_due(tedarikci_id):
+    d = request.get_json(silent=True) or {}
+    try:
+        with get_connection() as conn:
+            supplier_ledger.set_month_due(conn, tedarikci_id, d["ay"], d["vade_tarihi"])
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/tedarikciler/<int:tedarikci_id>/fatura", methods=["POST"])
+def supplier_invoice(tedarikci_id):
+    """Ay sonu mutabakatı için tedarikçinin fatura toplamı (otomatik düzeltme YAPILMAZ)."""
+    d = request.get_json(silent=True) or {}
+    try:
+        with get_connection() as conn:
+            supplier_ledger.set_invoice(conn, tedarikci_id, d["ay"], float(d["tutar"]), d.get("aciklama"))
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True})

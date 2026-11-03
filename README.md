@@ -147,6 +147,27 @@ Mevcut DB için: `migrations/vergi_gruplari_20261103.py --apply`.
 `monthly_reports.generate_report(..., keep_final=True)` kesin raporu yeni
 formülle yeniden üretirken statüsünü ve kesinleşme tarihini korur.
 
+**Nakit ve borç yönetimi (03.11.2026):** `/nakit` sayfası (`blueprints/cash_routes.py`,
+hesap mantığı `nakit.py`): hesap bakiyeleri (`cash_accounts`, `cash_balances`;
+borca ayrılmış hesap serbest nakde girmez, ödeme altyapısı bakiyesi ödeme
+gününde giriş sayılır), kredi kartları (`credit_cards`, `card_statements`,
+`installment_plans`; doluluk %80 üstünde uyarı bandı, `/api/nakit/uyarilar`),
+planlı ödemeler (`scheduled_payments`, `scheduled_payment_events` ödendi/
+ertelendi). Bu kayıtlar kâr-zarara HİÇ girmez. 13 haftalık nakit akışı
+(`/api/nakit/akis`, `?yalnizca_kesin=1`): `payout_calendar()` (resmi
+tahminler dahil), hakediş kaydı oluşmamış siparişler, gelecek satış tahmini
+(son 8 haftanın %90'ı × hakediş oranı, ödeme = sipariş→işlem + 
+`compute_actual_payout_lag_days()`), tahmini Watalina alımı (satış × son 3 ay
+maliyet/satış, vade M+1 ay sonu), TY reklam ve kargo/platform kesintileri
+(son 30 gün; komisyon faturası hariç). Tahmini kalemler `tahmini` işaretlidir.
+Tedarikçi defteri (`supplier_ledger.py`): 01.11.2026+ satırlar için otomatik
+`alis`, iptal/iadede `iade` (her senkronda idempotent `reconcile`), elle
+`acilis`/`odeme`/`duzeltme`, düzenlenebilir `vade_tarihi`, ay bazında vade
+(`tedarikci_vade_ayar`) ve fatura mutabakatı (`tedarikci_faturalari`, fark
+otomatik düzeltilmez). `product_costs.kendi_stok_kalan`: kendi aldığımız
+partiden satılan adet borca yazılmaz, kalan 0'a inince tedarikçiye gider.
+Başlangıç verileri: `scripts/asama2_baslangic_kayitlari.py [--apply]`.
+
 **Kalıcı kargo boşlukları (22.09.2026):** Bazı siparişler Trendyol
 tarafında HİÇBİR ZAMAN bir kargo kesinti faturasına dahil edilmeyebiliyor
 (gecikme değil, kalıcı boşluk — 44 fatura canlı API'den tek tek taranarak

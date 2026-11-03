@@ -498,6 +498,18 @@ def _migrate_manuel_siparisler(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_manuel_kalemleri_order ON manuel_siparis_kalemleri(order_id)")
 
 
+def _migrate_supplier_ledger_v3(conn):
+    """Faz 1 / Aşama 2: alis/iade/acilis tipleri, vade ve işlem tarihi (bkz. supplier_ledger)."""
+    import supplier_ledger
+    supplier_ledger.migrate_ledger_v3(conn)
+
+
+def _migrate_cash_tables(conn):
+    """Faz 1 / Aşama 2: nakit hesapları, kartlar, taksitler, planlı ödemeler (bkz. nakit.py)."""
+    import nakit
+    nakit.ensure_schema(conn)
+
+
 _MIGRATIONS = [
     ("2026_07_28_composite_marketplace_keys", _migrate_composite_keys),
     ("2026_08_09_growth_columns", _migrate_growth_columns),
@@ -513,6 +525,8 @@ _MIGRATIONS = [
     ("2026_10_10_manuel_siparisler", _migrate_manuel_siparisler),
     ("2026_10_16_cost_history", _migrate_cost_history),
     ("2026_10_16_fix_cost_excl_vat", _migrate_fix_cost_excl_vat),
+    ("2026_11_03_supplier_ledger_v3", _migrate_supplier_ledger_v3),
+    ("2026_11_03_cash_tables", _migrate_cash_tables),
 ]
 
 def init_db():
@@ -646,7 +660,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS tedarikci_borc_hareketleri (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tedarikci_id INTEGER NOT NULL REFERENCES tedarikciler(id),
-            tip TEXT NOT NULL CHECK(tip IN ('satis','odeme')),
+            tip TEXT NOT NULL CHECK(tip IN ('satis','odeme')),  -- v3 migration genişletir
             tutar REAL NOT NULL,
             order_line_key TEXT,
             aciklama TEXT,
@@ -933,6 +947,10 @@ def init_db():
         _ensure_column(conn, "cargo_costs", "marketplace", "TEXT NOT NULL DEFAULT 'trendyol'")
         # 11.08.2026: toptancı borcu — bir SKU'nun hangi tedarikçiden geldiğini işaretler.
         _ensure_column(conn, "product_costs", "tedarikci_id", "INTEGER REFERENCES tedarikciler(id)")
+        # 03.11.2026: kendi aldığımız parti (bkz. supplier_ledger). Kalan adet
+        # bitince satışlar tedarikçi borcuna yazılır.
+        _ensure_column(conn, "product_costs", "kendi_stok_kalan", "INTEGER")
+        _ensure_column(conn, "product_costs", "kendi_stok_sayim_ms", "INTEGER")
         conn.commit()
 
         _run_migrations(conn)
@@ -987,6 +1005,8 @@ def upsert_orders(rows):
                 cargo_tracking_number=COALESCE(excluded.cargo_tracking_number, cargo_tracking_number),
                 updated_at=datetime('now', 'localtime')
         """, rows)
+        # Durum değişikliği (iptal/iade) tedarikçi borcuna yansısın.
+        _sync_supplier_debt(conn)
 
 
 def get_order_for_label(marketplace, shipment_package_id):
@@ -1041,92 +1061,12 @@ _EXCLUDED_ORDER_STATUSES = {
 }
 
 
-def _sync_supplier_debt(conn, rows):
-    """order_lines upsert edilirken çağrılır: tedarikçisi atanmış SKU'lar için
-    (product_costs.cost_incl_vat x adet) kadar 'satis' borç hareketi ekler.
-    İptal/iade olmuş siparişler hariç tutulur (bkz. _EXCLUDED_ORDER_STATUSES).
-
-    SKU eşleşmesi: COALESCE(merchant_sku, barcode) = product_costs.sku —
-    product_costs/product_stock'ta zaten kullanılan aynı konvansiyon (trendyol
-    -> stockCode/barcode, hepsiburada -> merchantSku).
-
-    İdempotent: (order_line_key, tip='satis') UNIQUE olduğu için aynı satır
-    (marketplace, shipment_package_id, barcode) tekrar senkronize edilirse
-    borç ikinci kez eklenmez (INSERT OR IGNORE). NOT: bir satırın miktarı
-    sonradan değişirse (ör. Trendyol/HB tarafında düzeltme) borç kaydı
-    GÜNCELLENMEZ, çünkü ilk senkronda zaten yazılmış olur — bu istisnai bir
-    durum, fark edilirse elle bir 'odeme' veya 'duzeltme' hareketiyle telafi
-    edilmesi gerekir. NOT 2: bir sipariş 'satis' borcu yazıldıktan SONRA
-    iptal/iade olursa, bu hareket otomatik geri alınmaz (aynı istisnai durum)."""
-    tedarikcili_skus = {r[0] for r in conn.execute(
-        "SELECT sku FROM product_costs WHERE tedarikci_id IS NOT NULL"
-    ).fetchall()}
-    if not tedarikcili_skus:
-        return
-
-    placeholders = ",".join("?" for _ in tedarikcili_skus)
-    cost_map = {
-        row["sku"]: (row["cost_incl_vat"], row["tedarikci_id"])
-        for row in conn.execute(
-            f"SELECT sku, cost_incl_vat, tedarikci_id FROM product_costs WHERE sku IN ({placeholders})",
-            list(tedarikcili_skus),
-        ).fetchall()
-        if row["cost_incl_vat"] is not None
-    }
-    if not cost_map:
-        return
-
-    # İlgili siparişlerin durumlarını çek (iptal/iade filtresi için)
-    pkg_ids = {(r.get("marketplace"), r.get("shipment_package_id")) for r in rows}
-    status_map = {}
-    date_map = {}
-    import cost_history
-    history = cost_history.load_history_safe(conn)
-    for mp in {p[0] for p in pkg_ids}:
-        ids = [p[1] for p in pkg_ids if p[0] == mp]
-        if not ids:
-            continue
-        id_placeholders = ",".join("?" for _ in ids)
-        for row in conn.execute(
-            f"""SELECT shipment_package_id, status, order_date FROM orders
-                WHERE marketplace = ? AND shipment_package_id IN ({id_placeholders})""",
-            [mp, *ids],
-        ).fetchall():
-            status_map[(mp, row["shipment_package_id"])] = row["status"]
-            date_map[(mp, row["shipment_package_id"])] = row["order_date"]
-
-    debt_rows = []
-    for r in rows:
-        sku = r.get("merchant_sku") or r.get("barcode")
-        if sku not in cost_map:
-            continue
-        adet = r.get("quantity") or 0
-        if not adet:
-            continue
-        mp = r.get("marketplace")
-        status = status_map.get((mp, r.get("shipment_package_id")))
-        if status in _EXCLUDED_ORDER_STATUSES.get(mp, set()):
-            continue
-        cost_incl_vat, tedarikci_id = cost_map[sku]
-        cost_incl_vat = cost_history.cost_at(
-            history, sku, date_map.get((mp, r.get("shipment_package_id"))),
-            fallback=cost_incl_vat,
-        )
-        line_key = f"{r.get('marketplace')}:{r.get('shipment_package_id')}:{r.get('barcode')}"
-        debt_rows.append({
-            "tedarikci_id": tedarikci_id,
-            "tutar": round(cost_incl_vat * adet, 2),
-            "order_line_key": line_key,
-            "aciklama": f"Satis - {sku} x{adet}",
-        })
-    if not debt_rows:
-        return
-
-    conn.executemany("""
-        INSERT OR IGNORE INTO tedarikci_borc_hareketleri
-            (tedarikci_id, tip, tutar, order_line_key, aciklama)
-        VALUES (:tedarikci_id, 'satis', :tutar, :order_line_key, :aciklama)
-    """, debt_rows)
+def _sync_supplier_debt(conn, rows=None):
+    """03.11.2026'dan beri supplier_ledger.reconcile'a devreder: 01.11.2026+
+    satırlar için alış/iade hareketleri ve kendi stok tüketimi idempotent
+    senkronlanır (iptal/iade sonradan da yakalanır)."""
+    import supplier_ledger
+    supplier_ledger.reconcile(conn)
 
 
 def upsert_order_lines(rows):
@@ -1332,7 +1272,7 @@ def list_suppliers():
     with get_connection() as conn:
         rows = conn.execute("""
             SELECT t.id, t.ad,
-                   COALESCE(SUM(CASE WHEN h.tip='satis' THEN h.tutar ELSE 0 END),0) AS toplam_satis,
+                   COALESCE(SUM(CASE WHEN h.tip NOT IN ('odeme','duzeltme') THEN h.tutar ELSE 0 END),0) AS toplam_satis,
                    COALESCE(SUM(CASE WHEN h.tip='odeme' THEN h.tutar ELSE 0 END),0) AS toplam_odeme,
                    COALESCE(SUM(CASE WHEN h.tip='duzeltme' THEN h.tutar ELSE 0 END),0) AS toplam_duzeltme,
                    MAX(CASE WHEN h.tip='odeme' THEN h.tarih ELSE NULL END) AS son_odeme_tarihi
@@ -1371,14 +1311,17 @@ def assign_supplier_to_sku(sku, tedarikci_id):
         conn.execute("UPDATE product_costs SET tedarikci_id = ? WHERE sku = ?", (tedarikci_id, sku))
 
 
-def add_supplier_payment(tedarikci_id, tutar, aciklama=""):
+def add_supplier_payment(tedarikci_id, tutar, aciklama="", tarih=None):
     """'Ödeme Ekle' butonu: gerçek bir ödeme kaydı. Bakiyeyi düşürür VE
-    son_odeme_tarihi'ni günceller."""
+    son_odeme_tarihi'ni günceller. tarih: 'YYYY-MM-DD' (varsayılan bugün)."""
+    import datetime as _dt
+    tarih = tarih or _dt.date.today().isoformat()
+    _dt.date.fromisoformat(tarih)
     with get_connection() as conn:
         conn.execute("""
-            INSERT INTO tedarikci_borc_hareketleri (tedarikci_id, tip, tutar, aciklama)
-            VALUES (?, 'odeme', ?, ?)
-        """, (tedarikci_id, tutar, aciklama))
+            INSERT INTO tedarikci_borc_hareketleri (tedarikci_id, tip, tutar, aciklama, islem_tarihi)
+            VALUES (?, 'odeme', ?, ?, ?)
+        """, (tedarikci_id, tutar, aciklama, tarih))
 
 
 def add_supplier_adjustment(tedarikci_id, tutar, aciklama=""):
@@ -1397,11 +1340,7 @@ def reset_supplier_debt(tedarikci_id, aciklama="Bakiye sifirlama"):
     sıfırlar. Geçmiş hareketler silinmez, sadece bakiye kapatılır."""
     with get_connection() as conn:
         row = conn.execute("""
-            SELECT COALESCE(SUM(CASE
-                WHEN tip='satis' THEN tutar
-                WHEN tip='odeme' THEN -tutar
-                WHEN tip='duzeltme' THEN tutar
-                ELSE 0 END), 0) AS bakiye
+            SELECT COALESCE(SUM(CASE WHEN tip='odeme' THEN -tutar ELSE tutar END), 0) AS bakiye
             FROM tedarikci_borc_hareketleri WHERE tedarikci_id = ?
         """, (tedarikci_id,)).fetchone()
         bakiye = round(row["bakiye"], 2)
@@ -1413,13 +1352,10 @@ def reset_supplier_debt(tedarikci_id, aciklama="Bakiye sifirlama"):
         return -bakiye
 
 
-def list_supplier_ledger(tedarikci_id, limit=200):
+def list_supplier_ledger(tedarikci_id, limit=300):
+    import supplier_ledger
     with get_connection() as conn:
-        rows = conn.execute("""
-            SELECT id, tip, tutar, aciklama, tarih FROM tedarikci_borc_hareketleri
-            WHERE tedarikci_id = ? ORDER BY tarih DESC, id DESC LIMIT ?
-        """, (tedarikci_id, limit)).fetchall()
-    return [dict(r) for r in rows]
+        return supplier_ledger.ledger(conn, tedarikci_id, limit)
 
 
 def get_total_supplier_debt():
@@ -1798,7 +1734,7 @@ def list_expense_type_settings():
 #   vat_cash              -> KDV ödemesi; kâr-zarar kalemi DEĞİL, yalnızca nakit çıkışı
 EXPENSE_GROUPS = ("business", "tax", "income_tax_prepayment", "vat_cash")
 
-FINANCE_SETTING_DEFAULTS = {"income_tax_provision_rate": 0.20}
+FINANCE_SETTING_DEFAULTS = {"income_tax_provision_rate": 0.20, "min_cash_reserve": 0.0}
 
 
 def get_finance_settings():
@@ -1823,6 +1759,8 @@ def save_finance_setting(key, value):
     value = float(value)
     if key == "income_tax_provision_rate" and not 0 <= value <= 0.40:
         raise ValueError("Gelir vergisi karşılık oranı 0 ile 0,40 arasında olmalı")
+    if key == "min_cash_reserve" and value < 0:
+        raise ValueError("Minimum nakit rezervi negatif olamaz")
     with get_connection() as conn:
         conn.execute(
             "INSERT INTO finance_settings (setting_key, value, updated_at) VALUES (?, ?, datetime('now','localtime')) "

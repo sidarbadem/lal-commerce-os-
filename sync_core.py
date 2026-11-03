@@ -1338,6 +1338,9 @@ def refresh_hb_order_statuses(force=False, window_days=_HB_STATUS_REFRESH_WINDOW
                 "WHERE marketplace = 'hepsiburada' AND shipment_package_id = ?",
                 updates,
             )
+            # İptal/iade olan satırların tedarikçi borcu geri alınsın.
+            import supplier_ledger
+            supplier_ledger.reconcile(conn)
 
     # Hepsi başarısızsa (ör. kimlik hatası) cursor ilerletilmez, sonraki turda tekrar dener.
     if not rows_by_order or failed < len(rows_by_order):
