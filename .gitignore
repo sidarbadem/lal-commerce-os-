@@ -45,3 +45,11 @@ __pycache__/
 # Etiket dosya adı sayacı (etiket-1.pdf, etiket-2.pdf ...)
 etiket_sayac.txt
 etiket_sayac.txt.tmp
+
+# Yerel arşiv ve yedek klasörleri (2026-11-02 temizliği)
+backups/
+archive/patches/
+archive/logs/
+archive/outputs/
+archive/bak/
+*.bak_*

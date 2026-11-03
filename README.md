@@ -71,6 +71,10 @@ blueprints/               → dashboard, order, finance, cost, stock, payout rou
 templates/ , static/      → Panel arayüzü (Jinja2 + CSS/JS) — bkz. Frontend bölümü
 tests/                    → pytest test paketi
 migrations/               → Tek seferlik DB migration script'leri (--dry-run/--apply)
+scripts/                  → Elle çalıştırılan yardımcı araçlar (proje kökünden: python3 scripts/<ad>.py)
+archive/scripts/          → Uygulanmış tek seferlik patch/kurulum script'leri (referans için)
+archive/{patches,logs,outputs,bak}/ , backups/
+                          → Yerel arşiv ve DB yedekleri (git'e girmez)
 ```
 
 ### Senkronizasyon Mimarisi

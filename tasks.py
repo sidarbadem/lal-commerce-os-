@@ -188,7 +188,7 @@ def backfill_hb_quantities(self, limit=30):
 # ÖNCEKİ DURUM: trendyol_finance.reconcile_cargo_costs() (180 günlük geniş
 # pencereyle "DeductionInvoices" tipini yeniden çekip sync_cargo_costs()'u
 # tekrar çalıştıran fonksiyon) 14.09.2026'da RC2 düzeltmesiyle yazıldı ve
-# test edildi (test_cargo_reconciliation.py) ama HİÇBİR yerden (ne Beat'e,
+# test edildi (tests/test_cargo_reconciliation.py) ama HİÇBİR yerden (ne Beat'e,
 # ne bir route'a) bağlanmamıştı. Normal senkron akışı (_scheduled_sync,
 # son 2/7 gün) ölçülen 31.6 gün ortalama / 39.6 gün gözlemlenen maksimum
 # settlement->kargo faturası gecikmesini yakalayamıyordu — bu yüzden teslim

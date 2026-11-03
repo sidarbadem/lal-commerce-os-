@@ -4,11 +4,13 @@ belirli bir kargo faturasının HAM kalem listesini çeker ve bizim "kayıp"
 sandığımız sipariş numaralarının bu ham listede olup olmadığını gösterir.
 
 Kullanım:
-    venv/bin/python3 debug_cargo_invoice_raw.py DDF2026018582731 \
+    venv/bin/python3 scripts/debug_cargo_invoice_raw.py DDF2026018582731 \
         11505486378 11508127424 11508321601 11508472818 11508817543
 """
 import sys
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # proje kökü
 from trendyol_finance import fetch_cargo_invoice_items
 
 if __name__ == "__main__":
