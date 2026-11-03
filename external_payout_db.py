@@ -224,3 +224,33 @@ def get_estimates(marketplace=None):
                 "SELECT * FROM external_payout_estimates ORDER BY marketplace, payment_date"
             ).fetchall()
         return [dict(r) for r in rows]
+
+
+# --- Manuel giriş (03.11.2026) ---
+# Scraper çalışmadığı sürece pazaryeri panelindeki "gelecek ödemeler" listesi
+# elle girilir. region_code='MANUEL'. Scraper başarılı çalışırsa
+# save_estimates o pazaryerinin tüm satırlarını (manueller dahil) değiştirir.
+MANUAL_REGION = "MANUEL"
+
+
+def upsert_manual_estimate(marketplace, payment_date_ms, amount):
+    if marketplace not in ("trendyol", "hepsiburada"):
+        raise ValueError("marketplace trendyol veya hepsiburada olmalı")
+    amount = float(amount)
+    if amount <= 0:
+        raise ValueError("tutar pozitif olmalı")
+    with get_connection() as conn:
+        _ensure_tables(conn)
+        conn.execute("""
+            INSERT INTO external_payout_estimates (marketplace, region_code, payment_date, amount, fetched_at)
+            VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+            ON CONFLICT(marketplace, region_code, payment_date) DO UPDATE SET
+                amount = excluded.amount, fetched_at = excluded.fetched_at
+        """, (marketplace, MANUAL_REGION, int(payment_date_ms), amount))
+
+
+def delete_estimate(marketplace, region_code, payment_date_ms):
+    with get_connection() as conn:
+        _ensure_tables(conn)
+        conn.execute("DELETE FROM external_payout_estimates WHERE marketplace=? AND region_code=? AND payment_date=?",
+                     (marketplace, region_code, int(payment_date_ms)))

@@ -94,7 +94,14 @@ def ensure_schema(conn):
             ay_sonu INTEGER NOT NULL DEFAULT 0,
             bitis_tarihi TEXT,
             durum TEXT NOT NULL DEFAULT 'aktif' CHECK(durum IN ('aktif','pasif')),
-            notlar TEXT
+            notlar TEXT,
+            tutar_bekleniyor INTEGER NOT NULL DEFAULT 0   -- 1: tutar henüz belli değil (ör. muhasebeciden)
+        );
+        CREATE TABLE IF NOT EXISTS scheduled_payment_amounts (
+            odeme_id INTEGER NOT NULL REFERENCES scheduled_payments(id),
+            plan_tarihi TEXT NOT NULL,
+            tutar REAL NOT NULL,
+            PRIMARY KEY (odeme_id, plan_tarihi)
         );
         CREATE TABLE IF NOT EXISTS scheduled_payment_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,6 +268,45 @@ def payment_occurrences(p, start, end, events=None):
     return out
 
 
+def migrate_scheduled_amounts(conn):
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_payments)")]
+    if cols and "tutar_bekleniyor" not in cols:
+        conn.execute("ALTER TABLE scheduled_payments ADD COLUMN tutar_bekleniyor INTEGER NOT NULL DEFAULT 0")
+    ensure_schema(conn)
+
+
+def occurrence_amount(p, plan_date, overrides):
+    """Taksit tutarı: o tarih için girilmiş tutar > sabit tutar; tutarı
+    beklenen ödemede girilmemişse None (toplama katılmaz)."""
+    v = overrides.get(plan_date.isoformat())
+    if v is not None:
+        return v
+    return None if p.get("tutar_bekleniyor") else p["tutar"]
+
+
+def set_occurrence_amount(conn, odeme_id, plan_tarihi, tutar):
+    _d(plan_tarihi)
+    conn.execute("""INSERT INTO scheduled_payment_amounts (odeme_id, plan_tarihi, tutar) VALUES (?,?,?)
+                    ON CONFLICT(odeme_id, plan_tarihi) DO UPDATE SET tutar=excluded.tutar""",
+                 (odeme_id, plan_tarihi, float(tutar)))
+
+
+def hb_ads_weekly(conn, today):
+    """HB reklam bakiyesi yüklemeleri hakedişten düşülmez (ayrı ödenir):
+    son 3 tamamlanmış ayın fixed_expenses (ads_hb) ortalamasından haftalık tutar."""
+    first = date(today.year, today.month, 1)
+    start = add_months(first, -3, day=1)
+    months = [add_months(start, k, day=1).strftime("%Y-%m") for k in range(3)]
+    days = (first - start).days
+    labels = [r[0] for r in conn.execute("SELECT alias FROM expense_type_aliases WHERE type_key='ads_hb'")]
+    if not labels:
+        return 0.0, months
+    q = ",".join("?" for _ in labels)
+    total = conn.execute(f"SELECT COALESCE(SUM(amount),0) FROM fixed_expenses WHERE label IN ({q}) "
+                         f"AND month IN ({','.join('?' for _ in months)})", [*labels, *months]).fetchone()[0]
+    return round(total / days * 7, 2) if days else 0.0, months
+
+
 def set_payment_event(conn, odeme_id, plan_tarihi, durum, yeni_tarih=None):
     _d(plan_tarihi)
     if durum == "ertelendi":
@@ -403,12 +449,13 @@ def forecast_13_weeks(today=None, weeks=13, only_certain=False, conn=None):
     reserve = settings.get("min_cash_reserve", 0) or 0
     items = []
 
-    def add(d, yon, kalem, tutar, tahmini, aciklama=""):
-        if abs(tutar) < 0.005:
+    def add(d, yon, kalem, tutar, tahmini, aciklama="", bekleniyor=False):
+        if not bekleniyor and abs(tutar) < 0.005:
             return
         late = d < start
         items.append({"tarih": max(d, start).isoformat(), "yon": yon, "kalem": kalem,
-                      "tutar": round(tutar, 2), "tahmini": bool(tahmini),
+                      "tutar": None if bekleniyor else round(tutar, 2), "tahmini": bool(tahmini),
+                      "bekleniyor": bool(bekleniyor),
                       "aciklama": aciklama + (" (vadesi geçmiş, ilk haftaya alındı)" if late else "")})
 
     accounts = latest_balances(conn)
@@ -422,22 +469,42 @@ def forecast_13_weeks(today=None, weeks=13, only_certain=False, conn=None):
     # Pazaryeri hakedişleri (pazaryerinin bildirdiği tarih = kesin; gecikme tahmini = tahmini)
     cal = finance_engine.payout_calendar(start_dt=datetime.combine(start, datetime.min.time()),
                                          end_dt=datetime.combine(end, datetime.max.time()))
+    # Pazaryeri panelinden alınan (scraper ya da elle girilen) gelecek ödeme
+    # listesi varsa o pazaryeri için: listenin son gününe kadar settlement
+    # bazlı tahminler kullanılmaz (liste tam ödeme planıdır); gecikme
+    # ortalamasıyla üretilen tahminler hiç kullanılmaz (aynı satırlar panel
+    # listesinde zaten var). Panel tutarları kesintiler düşülmüş nettir.
+    import external_payout_db
+    official_cutoff = {}
+    for e in external_payout_db.get_estimates():
+        d = datetime.fromtimestamp(e["payment_date"] / 1000).date()
+        if d >= start:
+            official_cutoff[e["marketplace"]] = max(d, official_cutoff.get(e["marketplace"], d))
     overdue_skipped = 0.0
     names = {"trendyol": "Trendyol", "hepsiburada": "Hepsiburada"}
     for day in cal["days"]:
         d = _d(day["date"])
         for mp, b in (day.get("byMarketplace") or {}).items():
-            planned = (b.get("estimated") or 0) + (b.get("official") or 0)
+            official = b.get("official") or 0
+            planned = b.get("estimated") or 0
             lag = b.get("lagEstimated") or 0
             if d < start:
                 overdue_skipped += lag
                 continue
             if d > end:
                 continue
+            cut = official_cutoff.get(mp)
+            if cut:
+                lag = 0.0
+                if d <= cut:
+                    planned = 0.0
+            add(d, "giris", f"{names.get(mp, mp)} hakediş", official, False, "Pazaryeri paneli (gelecek ödemeler)")
             add(d, "giris", f"{names.get(mp, mp)} hakediş", planned, False, "Pazaryerinin bildirdiği ödeme")
             add(d, "giris", f"{names.get(mp, mp)} hakediş", lag, True, "Ödeme tarihi henüz verilmemiş satırlar (gecikme ortalaması)")
 
     inputs = forecast_inputs(conn, today)
+    hb_ads, hb_ads_months = hb_ads_weekly(conn, today)
+    inputs["hbAdsWeekly"] = hb_ads
     for mp, d, amt in _pending_order_payouts(conn, today, inputs):
         if d <= end:
             add(d, "giris", f"{names.get(mp, mp)} hakediş", amt, True, "Hakediş kaydı oluşmamış siparişler")
@@ -459,10 +526,15 @@ def forecast_13_weeks(today=None, weeks=13, only_certain=False, conn=None):
         due = supplier_ledger.default_due(mid)
         if due <= end:
             add(due, "cikis", "Watalina", total_sales * inputs["cogsRatio"], True, "Gelecek satışların alımı (tahmini)")
-        add(start + timedelta(days=7 * w), "cikis", "Trendyol reklam kesintisi", inputs["tyAdsDaily"] * 7, True,
-            "Son 30 günün ortalaması")
-        add(start + timedelta(days=7 * w), "cikis", "Trendyol kargo/platform kesintisi",
-            inputs["tyOtherDeductionsDaily"] * 7, True, "Son 30 günün ortalaması")
+        ws = start + timedelta(days=7 * w)
+        ty_cut = official_cutoff.get("trendyol")
+        ty_days = 7 if not ty_cut else max(0, min(7, ((ws + timedelta(days=6)) - ty_cut).days))
+        add(ws, "cikis", "Trendyol reklam kesintisi", inputs["tyAdsDaily"] * ty_days, True,
+            "Son 30 günün ortalaması" + (" (panel ödemelerinde düşülü günler hariç)" if ty_days < 7 else ""))
+        add(ws, "cikis", "Trendyol kargo/platform kesintisi",
+            inputs["tyOtherDeductionsDaily"] * ty_days, True, "Son 30 günün ortalaması")
+        add(ws, "cikis", "Hepsiburada reklam bakiyesi", hb_ads, True,
+            f"Son 3 ay ortalaması ({hb_ads_months[0]}–{hb_ads_months[-1]}); hakedişten düşülmez, ayrı yüklenir")
 
     # Kartlar
     for c in card_overview(conn, today):
@@ -493,10 +565,15 @@ def forecast_13_weeks(today=None, weeks=13, only_certain=False, conn=None):
         p = dict(p)
         events = {e["plan_tarihi"]: dict(e) for e in conn.execute(
             "SELECT * FROM scheduled_payment_events WHERE odeme_id=?", (p["id"],))}
+        overrides = {r["plan_tarihi"]: r["tutar"] for r in conn.execute(
+            "SELECT plan_tarihi, tutar FROM scheduled_payment_amounts WHERE odeme_id=?", (p["id"],))}
         for plan_d, eff in payment_occurrences(p, start, end, events):
-            if eff <= end:
-                add(eff, "cikis", p["aciklama"], p["tutar"], False,
-                    {"sahsi_cekis": "Şahsi çekiş"}.get(p["kategori"], p["kategori"]))
+            amt = occurrence_amount(p, plan_d, overrides)
+            label = {"sahsi_cekis": "Şahsi çekiş"}.get(p["kategori"], p["kategori"])
+            if amt is None:
+                add(eff, "cikis", p["aciklama"], 0, False, (p.get("notlar") or "Tutar bekleniyor"), bekleniyor=True)
+            else:
+                add(eff, "cikis", p["aciklama"], amt, False, label)
 
     if only_certain:
         items = [i for i in items if not i["tahmini"]]
@@ -506,14 +583,15 @@ def forecast_13_weeks(today=None, weeks=13, only_certain=False, conn=None):
     for w in range(weeks):
         ws, we = start + timedelta(days=7 * w), start + timedelta(days=7 * w + 6)
         wi = [i for i in items if ws.isoformat() <= i["tarih"] <= we.isoformat()]
-        gin = sum(i["tutar"] for i in wi if i["yon"] == "giris")
-        cik = sum(i["tutar"] for i in wi if i["yon"] == "cikis")
+        gin = sum(i["tutar"] for i in wi if i["yon"] == "giris" and i["tutar"] is not None)
+        cik = sum(i["tutar"] for i in wi if i["yon"] == "cikis" and i["tutar"] is not None)
         bal += gin - cik
         rows.append({
             "hafta": w + 1, "baslangic": ws.isoformat(), "bitis": we.isoformat(),
             "giris": round(gin, 2), "cikis": round(cik, 2), "net": round(gin - cik, 2),
             "girisTahmini": round(sum(i["tutar"] for i in wi if i["yon"] == "giris" and i["tahmini"]), 2),
             "cikisTahmini": round(sum(i["tutar"] for i in wi if i["yon"] == "cikis" and i["tahmini"]), 2),
+            "tutariBekleyen": [i["kalem"] for i in wi if i["bekleniyor"]],
             "bakiye": round(bal, 2), "rezervAlti": bal < reserve,
             "kalemler": sorted(wi, key=lambda i: (i["tarih"], i["yon"], i["kalem"])),
         })
@@ -521,5 +599,45 @@ def forecast_13_weeks(today=None, weeks=13, only_certain=False, conn=None):
         "bugun": today.isoformat(), "baslangicBakiyesi": opening, "rezerv": reserve,
         "yalnizcaKesin": only_certain, "haftalar": rows, "girdiler": inputs,
         "hesaplar": accounts, "gecikmisTahminiHaricTutulan": round(overdue_skipped, 2),
+        "panelOdemeSonTarihi": {k: v.isoformat() for k, v in official_cutoff.items()},
         "borcaAyrilmis": round(sum((a["bakiye"] or 0) for a in accounts if a["borca_ayrilmis"]), 2),
     }
+
+
+def hb_overdue_estimates(today=None):
+    """HB mutabakatı: ödeme tarihi bildirilmemiş, gecikme ortalamasıyla tahmin
+    edilen tarihi bugünden önce kalmış (ödendiği görünmeyen) hakediş satırları,
+    tahmini ödeme gününe göre gruplu."""
+    import finance_engine
+    today = today or date.today()
+    lag = finance_engine._AVG_PAYOUT_LAG_DAYS.get("hepsiburada", {})
+    groups = {}
+    with get_connection() as conn:
+        rows = conn.execute("""SELECT raw_transaction_type, transaction_type, seller_revenue, debt, credit,
+                                      commission_amount, transaction_date, order_number
+                               FROM settlements WHERE marketplace='hepsiburada' AND payment_date IS NULL
+                                 AND transaction_date IS NOT NULL""").fetchall()
+    for r in rows:
+        cat = finance_engine._categorize("hepsiburada", r["raw_transaction_type"], r["transaction_type"])
+        if cat == "other":
+            continue
+        net = finance_engine._payout_row_net("hepsiburada", r["raw_transaction_type"], r["seller_revenue"],
+                                             r["debt"], r["credit"], r["commission_amount"], r["transaction_type"])
+        tx = datetime.fromtimestamp(r["transaction_date"] / 1000)
+        est = finance_engine._round_up_to_payout_day(
+            tx + timedelta(days=lag.get("return" if cat == "return" else "sale", 35)), "hepsiburada").date()
+        if est > today:
+            continue
+        g = groups.setdefault(est, {"tahminiOdeme": est.isoformat(), "tutar": 0.0, "satir": 0,
+                                    "siparisler": set(), "islemIlk": tx.date(), "islemSon": tx.date()})
+        g["tutar"] += net
+        g["satir"] += 1
+        g["siparisler"].add(r["order_number"])
+        g["islemIlk"] = min(g["islemIlk"], tx.date())
+        g["islemSon"] = max(g["islemSon"], tx.date())
+    out = []
+    for k in sorted(groups):
+        g = groups[k]
+        out.append({"tahminiOdeme": g["tahminiOdeme"], "tutar": round(g["tutar"], 2), "satir": g["satir"],
+                    "siparis": len(g["siparisler"]), "islemDonemi": [g["islemIlk"].isoformat(), g["islemSon"].isoformat()]})
+    return {"items": out, "toplam": round(sum(i["tutar"] for i in out), 2)}

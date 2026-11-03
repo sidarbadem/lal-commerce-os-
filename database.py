@@ -510,6 +510,12 @@ def _migrate_cash_tables(conn):
     nakit.ensure_schema(conn)
 
 
+def _migrate_scheduled_amounts(conn):
+    """Planlı ödemede tutarı beklenen satır (muhasebeciden) + taksit bazlı tutar."""
+    import nakit
+    nakit.migrate_scheduled_amounts(conn)
+
+
 _MIGRATIONS = [
     ("2026_07_28_composite_marketplace_keys", _migrate_composite_keys),
     ("2026_08_09_growth_columns", _migrate_growth_columns),
@@ -527,6 +533,7 @@ _MIGRATIONS = [
     ("2026_10_16_fix_cost_excl_vat", _migrate_fix_cost_excl_vat),
     ("2026_11_03_supplier_ledger_v3", _migrate_supplier_ledger_v3),
     ("2026_11_03_cash_tables", _migrate_cash_tables),
+    ("2026_11_04_scheduled_amounts", _migrate_scheduled_amounts),
 ]
 
 def init_db():

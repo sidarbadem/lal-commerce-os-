@@ -112,8 +112,11 @@ def api_scheduled():
             p = dict(p)
             events = {e["plan_tarihi"]: dict(e) for e in conn.execute(
                 "SELECT * FROM scheduled_payment_events WHERE odeme_id=?", (p["id"],))}
+            overrides = {r["plan_tarihi"]: r["tutar"] for r in conn.execute(
+                "SELECT plan_tarihi, tutar FROM scheduled_payment_amounts WHERE odeme_id=?", (p["id"],))}
             occ = nakit.payment_occurrences(p, today, nakit.add_months(today, 12), events)
-            p["siradakiler"] = [{"plan": a.isoformat(), "tarih": b.isoformat()} for a, b in occ[:3]]
+            p["siradakiler"] = [{"plan": a.isoformat(), "tarih": b.isoformat(),
+                                 "tutar": nakit.occurrence_amount(p, a, overrides)} for a, b in occ[:3]]
             items.append(p)
     return jsonify({"items": items})
 
@@ -129,11 +132,11 @@ def api_add_scheduled():
             raise ValueError("kategori: " + ", ".join(nakit.PAYMENT_CATEGORIES))
         with get_connection() as conn:
             cur = conn.execute("""INSERT INTO scheduled_payments
-                (aciklama, kategori, tutar, baslangic_tarihi, tekrar, ay_sonu, bitis_tarihi, notlar)
-                VALUES (?,?,?,?,?,?,?,?)""",
-                               (d["aciklama"], d["kategori"], float(d["tutar"]), d["baslangic_tarihi"],
+                (aciklama, kategori, tutar, baslangic_tarihi, tekrar, ay_sonu, bitis_tarihi, notlar, tutar_bekleniyor)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                               (d["aciklama"], d["kategori"], float(d.get("tutar") or 0), d["baslangic_tarihi"],
                                 d.get("tekrar", "yok"), 1 if d.get("ay_sonu") else 0, d.get("bitis_tarihi") or None,
-                                d.get("notlar")))
+                                d.get("notlar"), 1 if d.get("tutar_bekleniyor") else 0))
     except (KeyError, TypeError, ValueError) as exc:
         return _err(exc)
     return jsonify({"ok": True, "id": cur.lastrowid})
@@ -157,3 +160,56 @@ def api_scheduled_event(odeme_id):
 def api_alerts():
     with get_connection() as conn:
         return jsonify({"kartlar": nakit.card_alerts(conn)})
+
+
+@bp.route("/api/nakit/planli/<int:odeme_id>/tutar", methods=["POST"])
+def api_scheduled_amount(odeme_id):
+    """Tutarı beklenen (ör. muhasebeciden) bir taksitin tutarını gir."""
+    d = request.get_json(silent=True) or {}
+    try:
+        with get_connection() as conn:
+            nakit.set_occurrence_amount(conn, odeme_id, d["plan_tarihi"], d["tutar"])
+    except (KeyError, TypeError, ValueError) as exc:
+        return _err(exc)
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/nakit/pazaryeri-odemeleri")
+def api_marketplace_payouts():
+    import external_payout_db as ep
+    from datetime import datetime
+    items = [dict(e, tarih=datetime.fromtimestamp(e["payment_date"] / 1000).date().isoformat(),
+                  kaynak="manuel" if e["region_code"] == ep.MANUAL_REGION else "panel")
+             for e in ep.get_estimates()]
+    return jsonify({"items": items, "durum": ep.get_scrape_status()})
+
+
+@bp.route("/api/nakit/pazaryeri-odemeleri", methods=["POST"])
+def api_add_marketplace_payout():
+    """Pazaryeri panelindeki 'gelecek ödemeler' listesinden elle giriş (kesin sayılır)."""
+    import external_payout_db as ep
+    from datetime import datetime
+    d = request.get_json(silent=True) or {}
+    try:
+        day = date.fromisoformat(d["tarih"])
+        ms = int(datetime(day.year, day.month, day.day).timestamp() * 1000)
+        ep.upsert_manual_estimate(d.get("marketplace"), ms, d["tutar"])
+    except (KeyError, TypeError, ValueError) as exc:
+        return _err(exc)
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/nakit/pazaryeri-odemeleri/sil", methods=["POST"])
+def api_delete_marketplace_payout():
+    import external_payout_db as ep
+    d = request.get_json(silent=True) or {}
+    try:
+        ep.delete_estimate(d["marketplace"], d["region_code"], int(d["payment_date"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        return _err(exc)
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/nakit/hb-gecikmis")
+def api_hb_overdue():
+    return jsonify(nakit.hb_overdue_estimates())

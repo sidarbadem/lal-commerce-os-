@@ -152,3 +152,105 @@ def test_api_endpoints(scenario, client):
     assert r.status_code == 400
     s = client.get("/api/tedarikciler/4/ozet", headers=h).get_json()
     assert s["bakiye"] == 217540 and s["vade"]["buAy"] == 217540
+
+
+# ---------------------------------------------------------------- 04.11 düzeltmeleri
+
+def _ms_day(iso):
+    from datetime import datetime as _dt
+    d = date.fromisoformat(iso)
+    return int(_dt(d.year, d.month, d.day).timestamp() * 1000)
+
+
+def test_official_hb_payouts_are_certain_and_replace_estimates(scenario):
+    import external_payout_db as ep
+    ep.upsert_manual_estimate("hepsiburada", _ms_day("2026-11-17"), 29814.49)
+    # payout_calendar sahte: 10.11 HB tahmini 1.000 (lag) -> panel listesi varken sayılmamalı
+    f = nakit.forecast_13_weeks(today=TODAY)
+    w1, w2 = f["haftalar"][0], f["haftalar"][1]
+    assert not any(i["kalem"] == "Hepsiburada hakediş" for i in w1["kalemler"])
+    assert w1["girisTahmini"] == 0
+    assert f["panelOdemeSonTarihi"] == {"hepsiburada": "2026-11-17"}
+
+
+def test_official_payouts_flow_through_real_payout_calendar(db, monkeypatch):
+    import external_payout_db as ep
+    monkeypatch.setattr(nakit, "forecast_inputs", lambda conn, today: {
+        "weeklySales": {}, "payoutRatio": {}, "cogsRatio": 0.0, "lagDays": {},
+        "tyAdsDaily": 0.0, "tyOtherDeductionsDaily": 0.0})
+    for iso, amt in [("2026-11-10", 38669.76), ("2026-11-17", 29814.49), ("2026-12-08", 13510.31)]:
+        ep.upsert_manual_estimate("hepsiburada", _ms_day(iso), amt)
+    ep.upsert_manual_estimate("hepsiburada", _ms_day("2026-11-10"), 38669.76)  # tekrar giriş: üzerine yazar
+    f = nakit.forecast_13_weeks(today=TODAY)
+    certain = [(i["tarih"], i["tutar"]) for w in f["haftalar"] for i in w["kalemler"]
+               if i["kalem"] == "Hepsiburada hakediş"]
+    assert certain == [("2026-11-10", 38669.76), ("2026-11-17", 29814.49), ("2026-12-08", 13510.31)]
+    assert all(not i["tahmini"] for w in f["haftalar"] for i in w["kalemler"] if i["kalem"] == "Hepsiburada hakediş")
+
+
+def test_ty_deductions_skipped_for_days_covered_by_panel(db, monkeypatch):
+    import external_payout_db as ep
+    monkeypatch.setattr(nakit, "forecast_inputs", lambda conn, today: {
+        "weeklySales": {}, "payoutRatio": {}, "cogsRatio": 0.0, "lagDays": {},
+        "tyAdsDaily": 100.0, "tyOtherDeductionsDaily": 0.0})
+    ep.upsert_manual_estimate("trendyol", _ms_day("2026-11-12"), 5000)
+    f = nakit.forecast_13_weeks(today=TODAY)
+    ads = lambda w: sum(i["tutar"] for i in w["kalemler"] if i["kalem"] == "Trendyol reklam kesintisi")
+    assert ads(f["haftalar"][0]) == pytest.approx(0)      # 04–10.11 panel kapsamında
+    assert ads(f["haftalar"][1]) == pytest.approx(500)    # 11–17.11: 13–17.11 = 5 gün
+    assert ads(f["haftalar"][2]) == pytest.approx(700)
+
+
+def test_hb_ads_weekly_from_last_three_months(db):
+    from database import upsert_fixed_expense
+    for m, n in (("2026-08", 3), ("2026-09", 4), ("2026-10", 4), ("2026-11", 1)):
+        for _ in range(n):
+            upsert_fixed_expense({"month": m, "label": "Pazaryeri Reklam / Hepsiburada", "amount": 5000, "note": None})
+    with get_connection() as conn:
+        weekly, months = nakit.hb_ads_weekly(conn, TODAY)
+    assert months == ["2026-08", "2026-09", "2026-10"]
+    assert weekly == pytest.approx(55000 / 92 * 7, abs=0.01)
+
+
+def test_placeholder_payment_shown_but_not_summed_until_amount_entered(scenario):
+    with get_connection() as conn:
+        conn.execute("INSERT INTO scheduled_payments (aciklama, kategori, tutar, baslangic_tarihi, tekrar, notlar, tutar_bekleniyor) "
+                     "VALUES ('KDV', 'vergi_sgk', 0, '2026-11-26', 'aylik', 'muhasebeciden bekleniyor', 1)")
+        conn.commit()
+        pid = conn.execute("SELECT id FROM scheduled_payments WHERE aciklama='KDV'").fetchone()[0]
+    before = nakit.forecast_13_weeks(today=TODAY)
+    w4 = before["haftalar"][3]
+    assert "KDV" in w4["tutariBekleyen"]
+    assert any(i["kalem"] == "KDV" and i["tutar"] is None for i in w4["kalemler"])
+    assert w4["bakiye"] == pytest.approx(-217971.13)       # toplama katılmadı
+    with get_connection() as conn:
+        nakit.set_occurrence_amount(conn, pid, "2026-11-26", 5000)
+        conn.commit()
+    after = nakit.forecast_13_weeks(today=TODAY)
+    assert after["haftalar"][3]["bakiye"] == pytest.approx(-222971.13)
+    assert "KDV" in after["haftalar"][7]["tutariBekleyen"]   # 26.12 hâlâ bekliyor
+
+
+def test_hb_overdue_estimates_grouped(db):
+    from database import upsert_settlements
+    from datetime import datetime as _dt
+    tx = int(_dt(2026, 9, 1, 12).timestamp() * 1000)
+    upsert_settlements([{
+        "id": "hb1", "marketplace": "hepsiburada", "transaction_date": tx, "barcode": "B", "transaction_type": "Sale",
+        "raw_transaction_type": "Payment", "receipt_id": None, "description": None, "debt": None, "credit": None,
+        "payment_period": None, "commission_rate": None, "commission_amount": None, "seller_revenue": 1000.0,
+        "order_number": "H1", "payment_order_id": None, "payment_date": None, "shipment_package_id": 9}])
+    r = nakit.hb_overdue_estimates(today=TODAY)
+    assert len(r["items"]) == 1 and r["items"][0]["siparis"] == 1
+    assert r["items"][0]["islemDonemi"] == ["2026-09-01", "2026-09-01"]
+
+
+def test_marketplace_payout_api(scenario, client):
+    from conftest import auth_headers
+    h = auth_headers()
+    assert client.post("/api/nakit/pazaryeri-odemeleri", json={"marketplace": "hepsiburada", "tarih": "2026-11-10",
+                                                               "tutar": 38669.76}, headers=h).status_code == 200
+    assert client.post("/api/nakit/pazaryeri-odemeleri", json={"marketplace": "x", "tarih": "2026-11-10",
+                                                               "tutar": 1}, headers=h).status_code == 400
+    items = client.get("/api/nakit/pazaryeri-odemeleri", headers=h).get_json()["items"]
+    assert items[0]["tarih"] == "2026-11-10" and items[0]["kaynak"] == "manuel"

@@ -167,6 +167,15 @@ Tedarikçi defteri (`supplier_ledger.py`): 01.11.2026+ satırlar için otomatik
 otomatik düzeltilmez). `product_costs.kendi_stok_kalan`: kendi aldığımız
 partiden satılan adet borca yazılmaz, kalan 0'a inince tedarikçiye gider.
 Başlangıç verileri: `scripts/asama2_baslangic_kayitlari.py [--apply]`.
+Pazaryeri gelecek ödemeleri (04.11.2026): `external_payout_scraper` çalışmadığı
+için panel listesi `/api/nakit/pazaryeri-odemeleri` ile elle girilir
+(`external_payout_estimates`, `region_code='MANUEL'`, kesin sayılır). Liste
+olan pazaryerinde son tarihe kadar settlement tahminleri ve tüm gecikme
+tahminleri kullanılmaz; TY'de liste günlerine kesinti tahmini eklenmez. HB
+reklam bakiyesi (hakedişten düşülmez) son 3 ayın `ads_hb` giderlerinden
+haftalık tahmini çıkış. Planlı ödemede `tutar_bekleniyor=1` satırlar (ör.
+KDV/muhtasar, muhasebeciden) tutar girilene kadar toplama katılmaz; taksit
+tutarı `scheduled_payment_amounts`. HB mutabakatı: `/api/nakit/hb-gecikmis`.
 
 **Kalıcı kargo boşlukları (22.09.2026):** Bazı siparişler Trendyol
 tarafında HİÇBİR ZAMAN bir kargo kesinti faturasına dahil edilmeyebiliyor
