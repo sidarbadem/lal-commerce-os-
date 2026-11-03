@@ -854,16 +854,27 @@ def init_db():
             ('einvoice_ty', 'E-Fatura Kontör / Trendyol', 'business', .20, ['E-Fatura Kontör / Trendyol']),
             ('ads_hb', 'Pazaryeri Reklam / Hepsiburada', 'business', .20, ['Pazaryeri Reklam / Hepsiburada']),
             ('ads_ty', 'Pazaryeri Reklam / Trendyol', 'business', .20, ['Pazaryeri Reklam / Trendyol']),
-            ('tax_withholding', 'Gelir vergisi stopajı', 'tax', 0, ['0003 GELİR VERGİSİ S. (MUHTASAR)', 'Tahakkuk - Gelir (Muhtasar)', 'Tahakkuk - Gelir Stopaj Muhtasar']),
-            ('vat_payment', 'Ödenen KDV', 'tax', 0, ['0015 GERÇEK USUL KATMA DEĞER VERGİSİ', '0015 GERÇEK USULDE KATMA DEĞER VERGİSİ', 'Gerçek Usulde KDV', 'Gerçek Usül Katma Değer Vergisi', 'KDV 1 - Tahakkuk', 'Tahakkuk - KDV1']),
-            ('vat_withholding', 'KDV Tevkifatı', 'tax', 0, ['4017 KDV Tevkifatı', 'KDV TEVKİFAT', 'KDV Tevfikat']),
+            ('tax_withholding', 'Muhtasar (hizmet stopajı)', 'business', 0, ['0003 GELİR VERGİSİ S. (MUHTASAR)', 'Tahakkuk - Gelir (Muhtasar)', 'Tahakkuk - Gelir Stopaj Muhtasar']),
+            ('vat_payment', 'Ödenen KDV', 'vat_cash', 0, ['0015 GERÇEK USUL KATMA DEĞER VERGİSİ', '0015 GERÇEK USULDE KATMA DEĞER VERGİSİ', 'Gerçek Usulde KDV', 'Gerçek Usül Katma Değer Vergisi', 'KDV 1 - Tahakkuk', 'Tahakkuk - KDV1']),
+            ('vat_withholding', 'KDV Tevkifatı', 'vat_cash', 0, ['4017 KDV Tevkifatı', 'KDV TEVKİFAT', 'KDV Tevfikat']),
             ('bagkur', '4B Bağ-Kur', 'tax', 0, ['4B Bağ-Kur']),
-            ('provisional_tax', 'Geçici vergi', 'tax', 0, ['G.GEÇİCİ -Tahakkuk', 'Gelir Geçici Vergi']),
+            ('provisional_tax', 'Geçici vergi', 'income_tax_prepayment', 0, ['G.GEÇİCİ -Tahakkuk', 'Gelir Geçici Vergi']),
         ]
         for type_key, display_name, group_name, rate, aliases in expense_types:
             c.execute("INSERT OR IGNORE INTO expense_type_settings (type_key, display_name, group_name, vat_included, vat_rate) VALUES (?,?,?,?,?)", (type_key, display_name, group_name, 1, rate))
             for alias in aliases:
                 c.execute("INSERT OR IGNORE INTO expense_type_aliases (alias, type_key) VALUES (?,?)", (alias, type_key))
+        # Finans ayarları (anahtar-değer). Gelir vergisi karşılık oranı tahminidir;
+        # gerçek oran mali müşavirden gelir.
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS finance_settings (
+            setting_key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+        )
+        """)
+        for key, value in FINANCE_SETTING_DEFAULTS.items():
+            c.execute("INSERT OR IGNORE INTO finance_settings (setting_key, value) VALUES (?, ?)", (key, str(value)))
         for key in ('sale', 'cost', 'commission', 'service', 'cargo', 'advertising', 'manual_expense'):
             default_included = 1
             default_rate = 0.20
@@ -1779,9 +1790,50 @@ def list_expense_type_settings():
         return [dict(r) for r in rows]
 
 
+# Gider grupları:
+#   business              -> işletme gideri, faaliyet kârından düşer
+#   tax                   -> vergi/prim (Bağ-Kur), gerçek net kârdan düşer
+#   income_tax_prepayment -> gelir vergisi ön ödemesi (geçici vergi); gerçek net
+#                            kârdan düşer, gelir vergisi karşılığından mahsup edilir
+#   vat_cash              -> KDV ödemesi; kâr-zarar kalemi DEĞİL, yalnızca nakit çıkışı
+EXPENSE_GROUPS = ("business", "tax", "income_tax_prepayment", "vat_cash")
+
+FINANCE_SETTING_DEFAULTS = {"income_tax_provision_rate": 0.20}
+
+
+def get_finance_settings():
+    out = dict(FINANCE_SETTING_DEFAULTS)
+    with get_connection() as conn:
+        try:
+            rows = conn.execute("SELECT setting_key, value FROM finance_settings").fetchall()
+        except sqlite3.OperationalError:
+            rows = []
+    for r in rows:
+        if r["setting_key"] in FINANCE_SETTING_DEFAULTS:
+            try:
+                out[r["setting_key"]] = float(r["value"])
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+def save_finance_setting(key, value):
+    if key not in FINANCE_SETTING_DEFAULTS:
+        raise ValueError("Bilinmeyen ayar: %s" % key)
+    value = float(value)
+    if key == "income_tax_provision_rate" and not 0 <= value <= 0.40:
+        raise ValueError("Gelir vergisi karşılık oranı 0 ile 0,40 arasında olmalı")
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO finance_settings (setting_key, value, updated_at) VALUES (?, ?, datetime('now','localtime')) "
+            "ON CONFLICT(setting_key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            (key, str(value)))
+    return get_finance_settings()
+
+
 def save_expense_type_setting(row):
-    if row.get("group_name") not in ("business", "tax"):
-        raise ValueError("group_name business veya tax olmalı")
+    if row.get("group_name") not in EXPENSE_GROUPS:
+        raise ValueError("group_name şunlardan biri olmalı: " + ", ".join(EXPENSE_GROUPS))
     if float(row.get("vat_rate", 0)) not in (0.0, 0.10, 0.20):
         raise ValueError("KDV oranı %0, %10 veya %20 olmalı")
     with get_connection() as conn:

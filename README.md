@@ -131,6 +131,22 @@ yalnızca masraf içeren settlement-only satırlar (ör. HB
 `ProcessingFeeExpense`) quantity=0 ile üretilir. Masraf sayılır, ürün
 maliyeti düşülmez.
 
+**Vergi, KDV ve gelir vergisi karşılığı (03.11.2026):** Elle gider türleri
+dört gruba ayrılır (`expense_type_settings.group_name`): `business` (işletme
+gideri, faaliyet kârından düşer; 0003 muhtasar/hizmet stopajı dahil), `tax`
+(Bağ-Kur), `income_tax_prepayment` (geçici vergi) ve `vat_cash` (Ödenen KDV,
+KDV tevkifatı). KDV ödemesi kâr-zarar kalemi değildir (net kâr zaten KDV
+hariç), `vatCashPayments` olarak ayrı döner. `realNetProfit` = faaliyet kârı −
+Bağ-Kur − gelir vergisi ön ödemeleri (`incomeTaxPrepayments` = e-ticaret
+stopajı + geçici vergi). Tahmini gelir vergisi karşılığı
+(`incomeTaxProvision`) = max(0, faaliyet kârı − Bağ-Kur) ×
+`finance_settings.income_tax_provision_rate` (varsayılan 0,20;
+`GET/POST /api/finance-settings`) − ön ödemeler; aylık değer eksi olabilir,
+yılbaşından birikmiş toplam (`incomeTaxProvisionYtd`) ekranda max(0, ·).
+Mevcut DB için: `migrations/vergi_gruplari_20261103.py --apply`.
+`monthly_reports.generate_report(..., keep_final=True)` kesin raporu yeni
+formülle yeniden üretirken statüsünü ve kesinleşme tarihini korur.
+
 **Kalıcı kargo boşlukları (22.09.2026):** Bazı siparişler Trendyol
 tarafında HİÇBİR ZAMAN bir kargo kesinti faturasına dahil edilmeyebiliyor
 (gecikme değil, kalıcı boşluk — 44 fatura canlı API'den tek tek taranarak

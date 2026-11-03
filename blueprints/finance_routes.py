@@ -21,6 +21,8 @@ from database import (
     list_fixed_expenses,
     upsert_fixed_expense,
     list_expense_type_settings,
+    get_finance_settings,
+    save_finance_setting,
     save_expense_type_setting,
     list_vat_settings,
     save_vat_setting,
@@ -407,6 +409,20 @@ def api_expense_type_settings():
     except (KeyError, TypeError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify({"ok": True, "item": item})
+
+
+@bp.route("/api/finance-settings", methods=["GET", "POST"])
+def api_finance_settings():
+    if request.method == "GET":
+        return jsonify({"settings": get_finance_settings()})
+    data = request.get_json(silent=True) or {}
+    try:
+        settings = None
+        for key, value in data.items():
+            settings = save_finance_setting(key, value)
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "settings": settings or get_finance_settings()})
 
 
 @bp.route("/api/vat-settings", methods=["GET", "POST"])

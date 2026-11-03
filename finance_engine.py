@@ -86,7 +86,7 @@ import re
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from database import get_connection, get_fixed_expenses_by_month
+from database import get_connection, get_fixed_expenses_by_month, get_finance_settings
 
 # RC3 DÜZELTMESİ (14.09.2026): Trendyol settlement->kargo faturası gecikmesi
 # production DB'de 42 gerçek fatura üzerinden ölçüldü (ortalama 31.6 gün,
@@ -811,7 +811,7 @@ def _fixed_expense_totals(rows, expense_types, aliases, manual_setting, auto_ads
         month = datetime.fromtimestamp((ad["transaction_date"] or 0) / 1000).strftime("%Y-%m")
         auto_day = datetime.fromtimestamp((ad["transaction_date"] or 0) / 1000).strftime("%Y-%m-%d")
         auto_keys[(month, ad["marketplace"], round(float(ad["amount"] or 0), 2))].append(auto_day)
-    business = tax = business_vat = 0.0
+    business = tax = business_vat = vat_cash = prepayment = 0.0
     assumed = False
     duplicates = []
     by_type = defaultdict(float)
@@ -835,9 +835,16 @@ def _fixed_expense_totals(rows, expense_types, aliases, manual_setting, auto_ads
         if exact_match:
             continue
         amount = float(row["amount"] or 0)
-        if rule.get("group_name") == "tax":
-            tax += amount
-            by_type[rule.get("type_key", "tax")] += amount
+        group = rule.get("group_name")
+        if group in ("tax", "income_tax_prepayment", "vat_cash"):
+            # Vergi/prim ödemeleri KDV'siz tutar olarak sayılır.
+            if group == "tax":
+                tax += amount
+            elif group == "income_tax_prepayment":
+                prepayment += amount
+            else:
+                vat_cash += amount
+            by_type[rule.get("type_key", group)] += amount
             continue
         if row.get("vat_amount") is not None:
             net_amount = amount - float(row["vat_amount"] or 0)
@@ -849,6 +856,7 @@ def _fixed_expense_totals(rows, expense_types, aliases, manual_setting, auto_ads
         business += net_amount
         by_type[rule.get("type_key", "manual_expense")] += net_amount
     return {"business": business, "tax": tax, "vat": business_vat,
+            "vat_cash": vat_cash, "income_tax_prepayment": prepayment,
             "assumed": assumed, "duplicates": duplicates,
             "by_type": dict(by_type)}
 
@@ -1537,9 +1545,25 @@ def _manual_profit_inputs(start_ms, end_ms, marketplace_filter, vat_settings=Non
     return lines, results
 
 
+def income_tax_provision(operating_profit, social_premiums, prepayments, rate):
+    """Gelir vergisi karşılığı (TAHMİNİ — gerçek hesap mali müşavirden gelir).
+
+    matrah   = max(0, faaliyet kârı − Bağ-Kur)   (Bağ-Kur matrahtan indirilir)
+    karşılık = matrah × oran − o ayın ön ödemeleri (e-ticaret stopajı + geçici vergi)
+
+    Aylık karşılık EKSİ olabilir (ön ödeme karşılığı aştıysa); böylece yılbaşından
+    itibaren toplam doğru çıkar. Ekranda YTD toplamı max(0, ·) gösterilir.
+    """
+    rate = float(rate or 0)
+    base = max(0.0, (operating_profit or 0) - (social_premiums or 0))
+    gross = base * rate
+    return {"rate": rate, "base": round(base, 2), "gross": round(gross, 2),
+            "provision": round(gross - (prepayments or 0), 2)}
+
+
 def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_filter=None,
                             include_settlement_only=True, include_period_expenses=False,
-                            skip_known_order_settlements=True):
+                            skip_known_order_settlements=True, provision_rate=None):
     """marketplace_filter: None -> tüm pazaryerleri (=eski 'all'),
     'trendyol' veya 'hepsiburada' -> sadece o pazaryeri.
 
@@ -1570,6 +1594,8 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
       4) Satır sonuçlarını pazaryeri bazında özetle
     """
     start_ms, end_ms = _resolve_range(days, start_dt, end_dt)
+    if provision_rate is None:
+        provision_rate = get_finance_settings()["income_tax_provision_rate"]
     data = _gather_summary_inputs(start_ms, end_ms, marketplace_filter,
                                    include_settlement_only=include_settlement_only,
                                    skip_known_order_settlements=skip_known_order_settlements)
@@ -1695,7 +1721,18 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
     total_vat_on_cost += expense_summary["vat"]
     vat_payable = total_vat_on_sale - total_vat_on_cost
     net_profit_after_vat = net_profit - vat_payable
-    net_profit_after_taxes = net_profit - expense_summary["tax"]
+    # 03.11.2026 (Faz 1 / 1.1-1.3): KDV ödemeleri (vat_cash) kâr-zarar kalemi
+    # değil, nakit çıkışı — net_profit zaten KDV hariç. Gerçek net kâr:
+    #   faaliyet kârı − Bağ-Kur/prim (tax) − gelir vergisi ön ödemeleri
+    #   (e-ticaret stopajı + geçici vergi). Muhtasar (hizmet stopajı) işletme
+    #   gideridir, faaliyet kârına zaten dahildir.
+    social_premiums = expense_summary["tax"]
+    provisional_tax = expense_summary["income_tax_prepayment"]
+    income_tax_prepayments = stoppage_total + provisional_tax
+    taxes_and_premiums = social_premiums + income_tax_prepayments
+    net_profit_after_taxes = net_profit - taxes_and_premiums
+    provision = income_tax_provision(net_profit, social_premiums, income_tax_prepayments,
+                                     provision_rate)
     vat_assumed = bool(expense_summary["assumed"] or any(r.get("vatAssumed") for r in line_results)
                        or (bool(return_total) and _vat_assumed(return_vat_setting))
                        or ((automatic_advertising_ex or marketplace_service_ex or cash_advance_ex)
@@ -1733,7 +1770,16 @@ def compute_profit_summary(days=None, start_dt=None, end_dt=None, marketplace_fi
             "realNetProfit": round(net_profit_after_taxes, 2),
             "profitAfterTaxes": round(net_profit_after_taxes, 2),
             "businessExpenses": round(expense_summary["business"], 2),
-            "taxesAndPremiums": round(expense_summary["tax"], 2),
+            "taxesAndPremiums": round(taxes_and_premiums, 2),
+            "socialPremiums": round(social_premiums, 2),
+            "provisionalTax": round(provisional_tax, 2),
+            "incomeTaxPrepayments": round(income_tax_prepayments, 2),
+            "vatCashPayments": round(expense_summary["vat_cash"], 2),
+            "incomeTaxProvisionRate": provision["rate"],
+            "incomeTaxProvisionBase": provision["base"],
+            "incomeTaxProvisionGross": provision["gross"],
+            "incomeTaxProvision": provision["provision"],
+            "netProfitAfterIncomeTax": round(net_profit_after_taxes - provision["provision"], 2),
             "unallocatedExpenses": round(unallocated_expenses, 2),
             "unallocatedVat": round(expense_summary["vat"], 2),
             "vatAssumed": vat_assumed,
@@ -1769,6 +1815,8 @@ def monthly_profit(start_dt, end_dt, marketplace_filter=None):
     """Aylık paneller her ay için aynı kanonik özet motorunu kullanır."""
     months = []
     cursor = datetime(start_dt.year, start_dt.month, 1)
+    provision_rate = get_finance_settings()["income_tax_provision_rate"]
+    ytd_year, ytd_running, ytd_partial = None, 0.0, False
     while cursor <= end_dt:
         key = cursor.strftime("%Y-%m")
         month_start = datetime(cursor.year, cursor.month, 1)
@@ -1780,8 +1828,15 @@ def monthly_profit(start_dt, end_dt, marketplace_filter=None):
         summary = compute_profit_summary(start_dt=month_start, end_dt=month_end,
                                          marketplace_filter=marketplace_filter,
                                          include_period_expenses=True,
-                                         skip_known_order_settlements=True)
+                                         skip_known_order_settlements=True,
+                                         provision_rate=provision_rate)
         t, quality = summary["totals"], summary["data_quality"]
+        # Yılbaşından itibaren gelir vergisi karşılığı. Aralık Ocak'tan
+        # başlamıyorsa o yılın toplamı eksik (ytdPartial).
+        if cursor.year != ytd_year:
+            ytd_year, ytd_running = cursor.year, 0.0
+            ytd_partial = cursor.month != 1
+        ytd_running += t.get("incomeTaxProvision", 0) or 0
         orders_missing_cargo = quality.get("orders_missing_cargo_invoice", 0)
         missing_skus = quality.get("skus_missing_cost", [])
         assumed = bool(t.get("vatAssumed"))
@@ -1801,8 +1856,11 @@ def monthly_profit(start_dt, end_dt, marketplace_filter=None):
         days_in_month = (next_month - month_start).days
         in_progress = month_end < next_month - timedelta(microseconds=1) and month_end.date() < (next_month - timedelta(days=1)).date()
         elapsed_ratio = (month_end.day / days_in_month) if in_progress else 1.0
+        # Stopaj satışla birlikte gerçekleşir, oranlanmaz; Bağ-Kur ve geçici
+        # vergi aylık/dönemsel yükümlülük -> geçen gün oranında tahakkuk.
         taxes = t.get("taxesAndPremiums", 0) or 0
-        taxes_accrued = taxes * elapsed_ratio
+        periodic = (t.get("socialPremiums", 0) or 0) + (t.get("provisionalTax", 0) or 0)
+        taxes_accrued = taxes - periodic + periodic * elapsed_ratio
         months.append({
             "month": key,
             "inProgress": in_progress,
@@ -1822,6 +1880,16 @@ def monthly_profit(start_dt, end_dt, marketplace_filter=None):
             "withholdingForOffset": t.get("stoppage", 0),
             "vatWithholdingNotOffset": t.get("vatWithholdingNotOffset", 0),
             "vatPayableEstimate": t.get("vatPayableEstimate", 0),
+            "stoppage": t.get("stoppage", 0),
+            "socialPremiums": t.get("socialPremiums", 0),
+            "provisionalTax": t.get("provisionalTax", 0),
+            "incomeTaxPrepayments": t.get("incomeTaxPrepayments", 0),
+            "vatCashPayments": t.get("vatCashPayments", 0),
+            "incomeTaxProvisionRate": t.get("incomeTaxProvisionRate", provision_rate),
+            "incomeTaxProvision": t.get("incomeTaxProvision", 0),
+            "netProfitAfterIncomeTax": t.get("netProfitAfterIncomeTax", 0),
+            "incomeTaxProvisionYtd": round(max(0.0, ytd_running), 2),
+            "incomeTaxProvisionYtdPartial": ytd_partial,
             "vatAssumed": assumed,
             "status": status,
             "expenseDuplicates": t.get("expenseDuplicates", []),

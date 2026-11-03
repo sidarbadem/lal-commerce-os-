@@ -614,7 +614,9 @@ def api_orders_export():
     ws.title = "Siparişler"
     headers = [
         "Tarih", "Sipariş No", "Pazaryeri", "Müşteri", "Durum",
-        "Kargo", "Ürünler", "Brüt Tutar", "İndirim", "Net Tutar", "Net Kâr",
+        "Kargo", "Ürünler", "Brüt Tutar", "İndirim", "Net Tutar",
+        # Satır brüt kârı: reklam, sabit gider ve vergi DÜŞÜLMEMİŞ.
+        "Satır Kârı (reklam/sabit gider öncesi)",
     ]
     ws.append(headers)
     for cell in ws[1]:

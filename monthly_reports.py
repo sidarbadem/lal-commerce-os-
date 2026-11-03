@@ -15,7 +15,11 @@ METRIC_KEYS = ["grossRevenue", "returnAmount", "netRevenue", "cogsTotal", "commi
                "cargoTotal", "stoppage", "platformServiceFee", "overheadTotal", "netProfit",
                "serviceFee", "cogsReversalTotal", "grossProfit", "operatingProfit",
                "realNetProfit", "businessExpenses", "taxesAndPremiums", "unallocatedExpenses",
-               "vatPayableEstimate", "withholdingForOffset", "vatWithholdingNotOffset"]
+               "vatPayableEstimate", "withholdingForOffset", "vatWithholdingNotOffset",
+               # 03.11.2026: KDV nakit çıkışı ayrı; gelir vergisi ön ödemesi/karşılığı
+               "socialPremiums", "provisionalTax", "incomeTaxPrepayments", "vatCashPayments",
+               "incomeTaxProvisionRate", "incomeTaxProvisionBase", "incomeTaxProvision",
+               "netProfitAfterIncomeTax"]
 
 
 def ensure_schema(conn):
@@ -111,7 +115,7 @@ def build_report_data(period):
         orders.add((ln.get("marketplace"), ln.get("orderNumber")))
         units += ln.get("quantity") or 0
 
-    metrics = {k: round(totals.get(k) or 0, 2) for k in METRIC_KEYS}
+    metrics = {k: round(totals.get(k) or 0, 4 if k == "incomeTaxProvisionRate" else 2) for k in METRIC_KEYS}
     metrics["fixedExpenses"] = round(metrics["businessExpenses"] + metrics["taxesAndPremiums"], 2)
     metrics["orderCount"] = len(orders)
     metrics["unitCount"] = units
@@ -150,10 +154,10 @@ def build_report_data(period):
     }
 
 
-def save_report(conn, period, data):
+def save_report(conn, period, data, finalized_at=None):
     ensure_schema(conn)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    finalized = now if data["status"] == "kesin" else None
+    finalized = (finalized_at or now) if data["status"] == "kesin" else None
     conn.execute(
         "INSERT INTO monthly_reports (period, status, data_json, generated_at, finalized_at) "
         "VALUES (?, ?, ?, ?, ?) "
@@ -246,6 +250,14 @@ def build_notes(view):
         else:
             notes.append("Sabit giderler (%s) düşüldükten sonra ay %s zararla kapandı." % (_tl(fixed), _tl(abs(real))))
 
+    vat_cash = m.get("vatCashPayments")
+    if vat_cash:
+        notes.append("Bu ay ödenen KDV %s nakit çıkışıdır; kâra dahil edilmedi." % _tl(vat_cash))
+    prov = m.get("incomeTaxProvision")
+    if prov is not None and m.get("netProfitAfterIncomeTax") is not None:
+        notes.append("Gelir vergisi karşılığı (tahmini, %%%s): %s; vergi sonrası net kâr (tahmini) %s." % (
+            _num1((m.get("incomeTaxProvisionRate") or 0) * 100), _tl(prov), _tl(m.get("netProfitAfterIncomeTax"))))
+
     if net is not None and gross:
         notes.append("Net kâr marjı (brüt ciroya göre): %%%s." % _num1(net / gross * 100))
 
@@ -301,6 +313,27 @@ def build_notes(view):
     return notes
 
 
+def income_tax_provision_ytd(conn, period, metrics):
+    """Yılbaşından bu aya kadar gelir vergisi karşılığı (tahmini). Aylık
+    değerler eksi olabilir; toplam ekranda max(0, ·). Eski formülle üretilmiş
+    (alanı olmayan) bir ay varsa toplam 'eksik' işaretlenir."""
+    y, m = parse_period(period)
+    total, partial = 0.0, False
+    for mm in range(1, m):
+        r = get_report(conn, "%04d-%02d" % (y, mm))
+        v = (r["data"]["metrics"].get("incomeTaxProvision") if r else None)
+        if v is None:
+            partial = partial or r is not None
+            continue
+        total += v
+    cur = metrics.get("incomeTaxProvision")
+    if cur is None:
+        partial = True
+    else:
+        total += cur
+    return {"incomeTaxProvisionYtd": round(max(0.0, total), 2), "incomeTaxProvisionYtdPartial": partial}
+
+
 def load_report_view(conn, period):
     cur = get_report(conn, period)
     if cur is None:
@@ -329,6 +362,8 @@ def load_report_view(conn, period):
             series.append({"period": sp, "label": period_label(sp), "status": r["status"],
                            "grossRevenue": m.get("grossRevenue"), "netProfit": m.get("netProfit"),
                            "realNetProfit": m.get("realNetProfit")})
+    metrics = dict(metrics)
+    metrics.update(income_tax_provision_ytd(conn, period, metrics))
     available = [{"period": r["period"], "status": r["status"]} for r in
                  conn.execute("SELECT period, status FROM monthly_reports ORDER BY period DESC").fetchall()]
 
@@ -377,16 +412,23 @@ def _notify_ready(conn, period, data):
     return True
 
 
-def generate_report(period, force=False, notify=False):
+def generate_report(period, force=False, notify=False, keep_final=False):
+    """keep_final=True: 'kesin' bir rapor yeni formülle yeniden üretilirken
+    statüsü ve kesinleşme tarihi korunur (veri kalitesi kontrolü tekrar
+    yapılmaz; ay kullanıcı tarafından kapatılmıştır)."""
     with database.get_connection() as conn:
         ensure_schema(conn)
         conn.commit()
-        row = conn.execute("SELECT status FROM monthly_reports WHERE period = ?", (period,)).fetchone()
+        row = conn.execute("SELECT status, finalized_at FROM monthly_reports WHERE period = ?", (period,)).fetchone()
     if row is not None and row["status"] == "kesin" and not force:
         return {"period": period, "skipped": True, "status": "kesin"}
     data = build_report_data(period)
+    finalized_at = None
+    if keep_final and row is not None and row["status"] == "kesin":
+        data["status"], data["statusLabel"] = "kesin", "Kesin"
+        finalized_at = row["finalized_at"]
     with database.get_connection() as conn:
-        save_report(conn, period, data)
+        save_report(conn, period, data, finalized_at=finalized_at)
         notified = _notify_ready(conn, period, data) if notify else False
         conn.commit()
     return {"period": period, "skipped": False, "status": data["status"], "notified": notified}
