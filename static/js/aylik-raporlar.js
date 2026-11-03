@@ -70,10 +70,14 @@
       ['overheadTotal', 'Dönemsel giderler (iade ve platform kesintileri)', false, false],
       ['cogsReversalTotal', 'İade edilen ürünlerin maliyet geri alımı', true, false],
       ['netProfit', 'Net kâr', true, true],
-      ['fixedExpenses', 'Sabit giderler', false, false],
+      ['socialPremiums', 'Bağ-Kur primi', false, false],
+      ['incomeTaxPrepayments', 'Gelir vergisi ön ödemeleri (stopaj + geçici vergi)', false, false],
       ['realNetProfit', 'Gerçek net kâr', true, true],
-      ['withholdingForOffset', 'Mahsup edilecek stopaj', false, false],
-      ['vatWithholdingNotOffset', 'Tevkifat (mahsup doğrulanmadı)', false, false],
+      ['incomeTaxProvision', 'Gelir vergisi karşılığı (tahmini)', false, false],
+      ['netProfitAfterIncomeTax', 'Vergi sonrası net kâr (tahmini)', true, true],
+      ['incomeTaxProvisionYtd', 'Yılbaşından birikmiş karşılık (tahmini)', false, false, true],
+      ['vatCashPayments', 'KDV ödemesi (nakit çıkışı, kâra dahil değil)', false, false, true],
+      ['businessExpenses', 'İşletme giderleri (net kârın içinde: reklam, muhasebe, muhtasar)', false, false, true],
       ['returnAmount', 'İadeler (bilgi, dönemsel giderlerin içinde)', false, false, true],
       ['netRevenue', 'Net ciro (bilgi)', true, false, true]
     ];

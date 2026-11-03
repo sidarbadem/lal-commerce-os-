@@ -93,6 +93,21 @@
       </div>
     </div>
 
+    <!-- Vergi, karşılık ve KDV nakit çıkışı (Faz 1 / Aşama 1) -->
+    <div class="panel da-tax-panel">
+      <div class="panel-header-row"><div>
+        <h2>Vergi ve KDV</h2>
+        <p class="panel-note">Gerçek net kâr = faaliyet kârı − Bağ-Kur − gelir vergisi ön ödemeleri (stopaj + geçici vergi). KDV ödemesi kâr kalemi değil, nakit çıkışıdır. Karşılık ve vergi sonrası kâr <strong>tahminidir</strong>; kesin hesap mali müşavirden gelir.</p>
+      </div></div>
+      <p class="da-tax-ytd" id="da-tax-ytd"></p>
+      <div class="table-scroll">
+        <table class="mpc-table da-tax-table">
+          <thead><tr><th>Ay</th><th>Faaliyet kârı</th><th>Bağ-Kur</th><th>GV ön ödemeleri</th><th>Gerçek net kâr</th><th>GV karşılığı <small>(tahmini)</small></th><th>Vergi sonrası <small>(tahmini)</small></th><th>KDV ödemesi <small>(nakit çıkışı)</small></th></tr></thead>
+          <tbody id="da-tax-body"></tbody>
+        </table>
+      </div>
+    </div>
+
 
     <!-- 2. grafik: Ay ayrıntısı — iç içe kapsüller, seçili satır açılır -->
     <div class="panel mpx-panel">

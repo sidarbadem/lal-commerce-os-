@@ -133,10 +133,28 @@
       catch (e) { showError('KDV ayarı kaydedilemedi: ' + e.message); }
     }));
   }
+  const expenseGroups = [
+    ['business', 'İşletme gideri'],
+    ['tax', 'Prim (Bağ-Kur)'],
+    ['income_tax_prepayment', 'Gelir vergisi ön ödemesi'],
+    ['vat_cash', 'KDV ödemesi (nakit, kâr dışı)'],
+  ];
+  const expenseGroupOptions = (g) => expenseGroups.map(([k, l]) => `<option value="${k}" ${g === k ? 'selected' : ''}>${l}</option>`).join('');
+  async function loadFinanceSettings() {
+    const input = document.getElementById('income-tax-rate'); if (!input) return;
+    const res = await fetch('/api/finance-settings'); const data = await res.json();
+    input.value = Math.round((data.settings.income_tax_provision_rate || 0) * 1000) / 10;
+    input.addEventListener('change', async () => {
+      try {
+        const r = await fetch('/api/finance-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ income_tax_provision_rate: Number(input.value) / 100 }) });
+        const d = await r.json(); if (d.error) throw new Error(d.error);
+      } catch (e) { showError('Karşılık oranı kaydedilemedi: ' + e.message); }
+    });
+  }
   async function loadExpenseTypes() {
     const res = await fetch('/api/expense-type-settings'); const data = await res.json();
     const body = document.getElementById('expense-types-tbody'); if (!body) return;
-    body.innerHTML = (data.items || []).map(it => `<tr data-type-key="${it.type_key}"><td><strong>${it.display_name}</strong><br><small>${it.aliases || ''}</small></td><td><select data-field="group_name"><option value="business" ${it.group_name === 'business' ? 'selected' : ''}>İşletme gideri</option><option value="tax" ${it.group_name === 'tax' ? 'selected' : ''}>Vergi / prim</option></select></td><td><select data-field="vat_included"><option value="1" ${it.vat_included ? 'selected' : ''}>Dâhil</option><option value="0" ${!it.vat_included ? 'selected' : ''}>Hariç</option></select></td><td><select data-field="vat_rate">${vatRateOptions(it.vat_rate)}</select></td><td><input type="text" data-field="alias" placeholder="Yeni yazım (isteğe bağlı)"><button type="button" class="inline-save-btn expense-type-save">Kaydet</button></td></tr>`).join('');
+    body.innerHTML = (data.items || []).map(it => `<tr data-type-key="${it.type_key}"><td><strong>${it.display_name}</strong><br><small>${it.aliases || ''}</small></td><td><select data-field="group_name">${expenseGroupOptions(it.group_name)}</select></td><td><select data-field="vat_included"><option value="1" ${it.vat_included ? 'selected' : ''}>Dâhil</option><option value="0" ${!it.vat_included ? 'selected' : ''}>Hariç</option></select></td><td><select data-field="vat_rate">${vatRateOptions(it.vat_rate)}</select></td><td><input type="text" data-field="alias" placeholder="Yeni yazım (isteğe bağlı)"><button type="button" class="inline-save-btn expense-type-save">Kaydet</button></td></tr>`).join('');
     body.querySelectorAll('.expense-type-save').forEach(btn => btn.addEventListener('click', async () => {
       const tr = btn.closest('tr'); const vals = Object.fromEntries([...tr.querySelectorAll('[data-field]')].map(x => [x.dataset.field, x.value]));
       try { const r = await fetch('/api/expense-type-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type_key: tr.dataset.typeKey, group_name: vals.group_name, vat_included: vals.vat_included === '1', vat_rate: Number(vals.vat_rate), alias: vals.alias || undefined }) }); const d = await r.json(); if (d.error) throw new Error(d.error); await loadExpenseTypes(); }
@@ -145,6 +163,7 @@
   }
   if (document.getElementById('vat-settings-tbody')) loadVatSettings();
   if (document.getElementById('expense-types-tbody')) loadExpenseTypes();
+  loadFinanceSettings();
 
   // ---------- Başlangıç ----------
   loadFixedExpenses();

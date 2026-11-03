@@ -116,3 +116,9 @@ html .da-wf-foot:empty { display: none; }
   html .da-wf-bar { grid-column: 1 / -1; grid-row: 2; }
   html .da-wf-p { display: none; }
 }
+
+/* Vergi ve KDV paneli */
+html .da-tax-panel { padding: var(--lal-space-5) var(--lal-space-6); }
+html .da-tax-ytd { margin: 0 0 var(--lal-space-3); font: 600 14px/1.4 var(--lal-font-body); color: var(--lal-text-main); }
+html .da-tax-table th small { display: block; font-weight: 500; color: var(--lal-text-faint); }
+html .da-tax-table td { font-variant-numeric: tabular-nums; white-space: nowrap; }

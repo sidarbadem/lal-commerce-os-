@@ -139,6 +139,11 @@
   </div>
 
   <div class="lal-tab-panel" id="fin-kdv-ayarlari">
+    <div class="panel lal-mb-4">
+      <h2>Gelir vergisi karşılığı</h2>
+      <p class="panel-note">Aylık rapor ve Detaylı Analiz'deki <strong>tahmini</strong> karşılık bu oranla hesaplanır: (faaliyet kârı − Bağ-Kur) × oran − stopaj − geçici vergi. Gerçek oranı mali müşavirden alın.</p>
+      <label>Oran (%) <input type="number" id="income-tax-rate" min="0" max="40" step="0.5" style="width:6em"></label>
+    </div>
     <div class="panel">
       <h2>KDV hesaplama ayarları</h2>
       <p class="panel-note">KDV kaynağında ayrı değilse, seçilen oran ve “KDV dâhil” ayarıyla çevrilir. Bu dönüşüm ayı tahmini olarak işaretler.</p>
@@ -146,7 +151,7 @@
     </div>
     <div class="panel lal-mt-4">
       <h2>Elle gider türleri</h2>
-      <p class="panel-note">Grup faaliyet kârına veya vergi/prim sonrası satırına yönlendirir. Eski gider adları silinmeden eşleme tablosuyla sınıflandırılır.</p>
+      <p class="panel-note">İşletme gideri faaliyet kârından, prim ve gelir vergisi ön ödemesi gerçek net kârdan düşülür. KDV ödemesi kâra girmez, yalnızca nakit çıkışıdır. Eski gider adları silinmeden eşleme tablosuyla sınıflandırılır.</p>
       <div class="table-scroll"><table><thead><tr><th>Tür ve eski yazımları</th><th>Grup</th><th>KDV dâhil</th><th>Oran</th><th>Yeni eski-yazım eşlemesi</th></tr></thead><tbody id="expense-types-tbody"></tbody></table></div>
     </div>
   </div>

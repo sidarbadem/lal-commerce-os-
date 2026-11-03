@@ -94,7 +94,7 @@
     }).join('');
     const foot = document.getElementById('da-wf-foot');
     if (foot) {
-      foot.textContent = t.stoppage ? `Stopaj ${fmtTL(t.stoppage)} ayrıca kesildi; gelir vergisinden mahsup edildiği için kârdan düşülmez.` : '';
+      foot.textContent = t.stoppage ? `Stopaj ${fmtTL(t.stoppage)} ayrıca kesildi; gelir vergisi ön ödemesidir, gerçek net kârdan düşülür (aşağıda "Vergi ve KDV").` : '';
     }
   }
 
@@ -607,6 +607,30 @@
   // Her iki görünümü de aynı `months` verisiyle inşa eder/günceller — tek
   // fetch, tek veri kaynağı; sadece Trend Analizi (line) ve Finansal Özet
   // (CFO grouped-bar) render fonksiyonları farklıdır.
+  // Vergi ve KDV tablosu: son 6 ay. Karşılık aylık eksi olabilir (ön ödeme
+  // fazlası); yılbaşından birikmiş toplam backend'de max(0, ·).
+  function renderTaxPanel(months) {
+    const body = document.getElementById('da-tax-body');
+    if (!body) return;
+    const recent = months.slice(-6).reverse();
+    const td = (v) => `<td>${fmtTL(v || 0)}</td>`;
+    body.innerHTML = recent.map(m => `<tr>
+      <td>${esc(m.month)}${m.inProgress ? ' <small>(devam)</small>' : ''}</td>
+      ${td(m.operatingProfit)}${td(-(m.socialPremiums || 0))}${td(-(m.incomeTaxPrepayments || 0))}
+      <td><strong>${fmtTL(m.realNetProfit || 0)}</strong></td>
+      ${td(-(m.incomeTaxProvision || 0))}
+      <td><strong>${fmtTL(m.netProfitAfterIncomeTax || 0)}</strong></td>
+      ${td(-(m.vatCashPayments || 0))}
+    </tr>`).join('');
+    const last = months[months.length - 1];
+    const ytd = document.getElementById('da-tax-ytd');
+    if (ytd && last) {
+      const rate = Math.round((last.incomeTaxProvisionRate || 0) * 100);
+      ytd.textContent = `${last.month.slice(0, 4)} yılbaşından birikmiş gelir vergisi karşılığı (tahmini, %${rate}): ${fmtTL(last.incomeTaxProvisionYtd || 0)}`
+        + (last.incomeTaxProvisionYtdPartial ? ' · yılın ilk ayları eksik' : '');
+    }
+  }
+
   function renderMonthlyProfitViews(months) {
     // Sipariş verisi Nisan'da başlıyor; öncesindeki aylar yalnızca birkaç
     // hakediş kaydı taşıyor ve grafikte boş sütun olarak yer kaplıyordu.
@@ -622,6 +646,7 @@
     renderMonthlyProfitLineChart(months);
     renderMonthlyProfitBarChart(months);
     renderMonthlyProfitTable(months);
+    renderTaxPanel(months);
 
     // 2. ve 3. grafik (gosterge-aylik-ek.js) aynı aylık veriyi bu olaydan alır.
     const extra = months.map(m => ({
