@@ -81,3 +81,42 @@ def test_mark_read(db):
     assert notifications.list_notifications()["unread"] == 1
     notifications.mark_read(None)
     assert notifications.list_notifications()["unread"] == 0
+
+
+def test_review_notification_includes_product_name_and_image(db):
+    notifications.detect_and_notify()
+    with database.get_connection() as conn:
+        conn.execute(
+            "INSERT INTO orders (shipment_package_id, marketplace, order_number, "
+            "order_date, status, net_amount) VALUES (9, 'hepsiburada', 'H9', 1759600000000, 'Delivered', 10)"
+        )
+        conn.execute(
+            "INSERT INTO order_lines (shipment_package_id, marketplace, barcode, merchant_sku, "
+            "product_name, quantity) VALUES (9, 'hepsiburada', 'HBCV1', 'SH-X', 'Uzun HB Adi', 1)"
+        )
+        conn.execute(
+            "INSERT INTO product_costs (sku, product_name) VALUES ('SH-X', 'Filtre Seti')"
+        )
+        conn.execute(
+            "INSERT INTO product_images (marketplace, sku, image_url) "
+            "VALUES ('trendyol', 'SH-X', 'https://img/x.jpg')"
+        )
+        conn.execute(
+            "INSERT INTO review_contents (external_review_id, marketplace, product_sku, star, content) "
+            "VALUES ('r1', 'hepsiburada', 'HBCV1', 5, 'Harika')"
+        )
+        conn.execute(
+            "INSERT INTO review_contents (external_review_id, marketplace, product_sku, star, content) "
+            "VALUES ('r2', 'hepsiburada', 'BILINMEYEN', 3, 'Idare')"
+        )
+    notifications.detect_and_notify()
+    items = [i for i in notifications.list_notifications(limit=100)["items"] if i["kind"] == "review"]
+    by_sku = {i["detail"]["reviews"][0]["sku"]: i for i in items}
+    known = by_sku["HBCV1"]
+    assert "Filtre Seti" in known["title"]
+    rev = known["detail"]["reviews"][0]
+    assert rev["product_name"] == "Filtre Seti"
+    assert rev["merchant_sku"] == "SH-X"
+    assert rev["image_url"] == "https://img/x.jpg"
+    unknown = by_sku["BILINMEYEN"]["detail"]["reviews"][0]
+    assert unknown["product_name"] is None and unknown["image_url"] is None

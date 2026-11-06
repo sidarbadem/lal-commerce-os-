@@ -173,30 +173,81 @@ def _emit_cancellations(conn, rows):
     return 1
 
 
-def _review_item(r):
+def _review_products(conn, rows):
+    """Yorum SKU'su (HB barkodu) -> {merchant_sku, name, image_url}.
+
+    Zincir: order_lines.barcode -> merchant_sku -> product_costs.product_name
+    ve product_images.image_url. Bulunamayan alan None kalir; bildirim yine uretilir.
+    """
+    from sku_alias import normalize_sku
+
+    out = {}
+    for sku in {r["product_sku"] for r in rows if r["product_sku"]}:
+        line = conn.execute(
+            "SELECT NULLIF(merchant_sku, '') AS ms, product_name FROM order_lines "
+            "WHERE barcode = ? OR merchant_sku = ? "
+            "ORDER BY (merchant_sku IS NULL OR merchant_sku = ''), id DESC LIMIT 1",
+            (sku, sku),
+        ).fetchone()
+        ms = (line["ms"] if line else None) or sku
+        keys = list(dict.fromkeys([ms, normalize_sku(ms), sku]))
+        marks = ",".join("?" for _ in keys)
+        cost = conn.execute(
+            "SELECT product_name FROM product_costs WHERE sku IN (%s) "
+            "AND product_name IS NOT NULL AND product_name <> '' LIMIT 1" % marks, keys,
+        ).fetchone()
+        img = conn.execute(
+            "SELECT image_url FROM product_images WHERE sku IN (%s) "
+            "AND image_url IS NOT NULL LIMIT 1" % marks, keys,
+        ).fetchone()
+        name = (cost["product_name"] if cost else None) or (line["product_name"] if line else None)
+        out[sku] = {
+            "merchant_sku": ms if ms != sku else None,
+            "name": name,
+            "image_url": img["image_url"] if img else None,
+        }
+    return out
+
+
+def _review_item(r, products=None):
+    info = (products or {}).get(r["product_sku"]) or {}
     return {
         "marketplace": r["marketplace"],
         "sku": r["product_sku"],
+        "merchant_sku": info.get("merchant_sku"),
+        "product_name": info.get("name"),
+        "image_url": info.get("image_url"),
         "star": r["star"],
         "content": (r["content"] or "")[:300],
     }
 
 
+def _short(text, n=60):
+    text = (text or "").strip()
+    return text if len(text) <= n else text[: n - 1].rstrip() + "…"
+
+
 def _emit_reviews(conn, rows):
     if not rows:
         return 0
+    products = _review_products(conn, rows[:MAX_DETAIL_ITEMS])
     if len(rows) <= MAX_INDIVIDUAL:
         for r in rows:
             snippet = (r["content"] or "").strip().replace("\n", " ")[:140]
+            name = (products.get(r["product_sku"]) or {}).get("name")
+            title = "Yeni yorum · %s★" % (r["star"] if r["star"] is not None else "?")
+            if name:
+                title += " · " + _short(name)
             _add(
-                conn, "review", "Yeni yorum · %s★" % (r["star"] if r["star"] is not None else "?"),
+                conn, "review", title,
                 snippet or "(yorum metni yok)",
-                {"reviews": [_review_item(r)]}, r["marketplace"],
+                {"reviews": [_review_item(r, products)]}, r["marketplace"],
             )
         return len(rows)
     _add(
         conn, "review", "%d yeni yorum" % len(rows), "Detayda listelendi.",
-        {"reviews": [_review_item(r) for r in rows[:MAX_DETAIL_ITEMS]], "total": len(rows)},
+        {"reviews": [_review_item(r, products) for r in rows[:MAX_DETAIL_ITEMS]],
+         "total": len(rows)},
         None,
     )
     return 1
