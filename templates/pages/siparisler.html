@@ -51,7 +51,7 @@
         <button type="button" class="op-chip" data-filter="loss">Zararlı <em id="chip-loss"></em></button>
         <button type="button" class="op-chip" data-filter="low_margin">Düşük marj (&lt;%10)</button>
         <button type="button" class="op-chip" data-filter="missing_cost">Maliyeti eksik <em id="chip-missing"></em></button>
-        <span class="op-chips-note">Tutarlar KDV hariç · <span class="op-est">~</span> tahmini</span>
+        <span class="op-chips-note">Tutarlar KDV hariç · <span class="is-est">noktalı çizgi</span> = tahmini</span>
       </div>
       <p class="panel-note" id="result-note">Yükleniyor…</p>
       <div id="orders-table-wrap" class="op-table-wrap">
@@ -62,9 +62,9 @@
             <th>Kanal</th>
             <th>Durum</th>
             <th class="num"><button type="button" class="op-sort" data-sort="revenue">Satış</button></th>
-            <th class="num">Komisyon</th>
-            <th class="num">Kargo</th>
-            <th class="num">Maliyet</th>
+            <th class="num op-col-cost">Komisyon</th>
+            <th class="num op-col-cost">Kargo</th>
+            <th class="num op-col-cost">Maliyet</th>
             <th class="num"><button type="button" class="op-sort" data-sort="profit">Net Kâr</button></th>
             <th class="num"><button type="button" class="op-sort" data-sort="margin">Marj</button></th>
           </tr></thead>

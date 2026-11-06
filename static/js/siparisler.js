@@ -29,13 +29,31 @@
   }
 
   function statusPill(status) {
+    // Pazaryeri ham durumları Türkçe etiket + tek renk ailesine çevrilir;
+    // ham değer title'da kalır (destekle konuşurken lazım olabilir).
     const map = {
-      Delivered: ['pill-delivered', 'Teslim Edildi'],
+      Created: ['pill-new', 'Yeni'],
+      Open: ['pill-new', 'Yeni'],
+      AwaitingPackage: ['pill-new', 'Paket bekliyor'],
+      Picking: ['pill-prep', 'Hazırlanıyor'],
+      Invoiced: ['pill-prep', 'Faturalandı'],
+      Packaged: ['pill-prep', 'Paketlendi'],
+      ReadyToShip: ['pill-prep', 'Kargoya hazır'],
+      Shipped: ['pill-transit', 'Kargoda'],
+      InTransit: ['pill-transit', 'Yolda'],
+      AtCollectionPoint: ['pill-transit', 'Teslim noktasında'],
+      Delivered: ['pill-delivered', 'Teslim edildi'],
+      'Teslim Edildi': ['pill-delivered', 'Teslim edildi'],
+      UnDelivered: ['pill-cancelled', 'Teslim edilemedi'],
       Cancelled: ['pill-cancelled', 'İptal'],
+      CancelledByCustomer: ['pill-cancelled', 'Müşteri iptali'],
+      CancelledBySeller: ['pill-cancelled', 'Satıcı iptali'],
       UnSupplied: ['pill-cancelled', 'Karşılanamadı'],
+      ClaimCreated: ['pill-claim', 'İade talebi'],
+      Returned: ['pill-claim', 'İade'],
     };
     const [cls, label] = map[status] || ['pill-other', status || '—'];
-    return `<span class="pill ${cls}">${label}</span>`;
+    return `<span class="pill ${cls}" title="${escHtml(status || '')}">${label}</span>`;
   }
 
   // DÜZELTME (09.08.2026): sipariş bazlı Net Kâr hücresi.
@@ -70,9 +88,9 @@
       return `<span class="op-profit ${cls}" title="Manuel sipariş: satış − alış maliyeti − komisyon − kargo">${fmtTL2(o.netProfit)}</span>`;
     }
     const reasons = estimateReasons(o);
-    const prefix = reasons.length ? '<span class="op-est">~</span>' : '';
+    const est = reasons.length ? ' is-est' : '';
     const title = reasons.length ? `Tahmini: ${reasons.join(' ')}` : 'Gerçek: Finans API settlement kaydına ve gerçek kargo faturasına göre hesaplandı.';
-    return `<span class="op-profit ${cls}" title="${escHtml(title)}">${prefix}${fmtTL2(o.netProfit)}</span>`;
+    return `<span class="op-profit ${cls}${est}" title="${escHtml(title)}">${fmtTL2(o.netProfit)}</span>`;
   }
 
   function marginPill(m) {
@@ -88,7 +106,7 @@
   function costCell(v, est) {
     if (v === null || v === undefined) return '<span class="op-cost">—</span>';
     if (!v) return '<span class="op-cost">₺0</span>';
-    return `<span class="op-cost">${est ? '<span class="op-est">~</span>' : ''}−${fmtTL2(Math.abs(v))}</span>`;
+    return `<span class="op-cost${est ? ' is-est' : ''}"${est ? ' title="Tahmini"' : ''}>−${fmtTL2(Math.abs(v))}</span>`;
   }
 
   // Ürün görseli SADECE Trendyol'dan senkronize ediliyor ("Ürün Ayarları"
@@ -139,14 +157,14 @@
     const body = rows.map(([lbl, v, c, est]) => {
       const w = v === null ? 0 : Math.min(100, pctOf(v, rev) || 0);
       const amt = v === null ? '<span class="op-missing">maliyet yok</span>'
-        : `${est ? '<span class="op-est">~</span>' : ''}${v < 0 ? '−' : ''}${fmtTL2(Math.abs(v))}`;
+        : `<span class="${est ? 'is-est' : ''}">${v < 0 ? '−' : ''}${fmtTL2(Math.abs(v))}</span>`;
       return `<div class="op-wf-row"><span class="lbl">${lbl}</span><span class="bar"><i class="${c}" style="width:${w}%;${c === 'c-profit' ? 'opacity:.35' : ''}"></i></span><span class="amt">${amt}</span><span class="pct">${v === null || c === 'c-profit' ? '' : fmtPct(pctOf(v, rev))}</span></div>`;
     }).join('');
     const np = o.netProfit;
     const npCls = np === null ? '' : (np >= 0 ? 'pos' : 'neg');
     const total = `<div class="op-wf-row total"><span class="lbl">Net kâr</span><span class="bar"><i class="c-profit" style="width:${np === null ? 0 : Math.min(100, Math.max(0, pctOf(np, rev) || 0))}%;${np < 0 ? 'background:var(--lal-red)' : ''}"></i></span><span class="amt op-profit ${npCls}">${np === null ? '—' : fmtTL2(np)}</span><span class="pct">${marginPill(o.margin)}</span></div>`;
     const reasons = estimateReasons(o);
-    const note = reasons.length ? `<div class="op-wf-note">~ ${escHtml(reasons.join(' '))}</div>` : '';
+    const note = reasons.length ? `<div class="op-wf-note"><span class="is-est">Tahmini</span> ${escHtml(reasons.join(' '))}</div>` : '';
     return `<h4>Kâr dökümü</h4><div class="op-wf">${body}${total}</div>${note}`;
   }
 
@@ -200,9 +218,9 @@
         <td>${marketplaceBadge(o.marketplace)}</td>
         <td>${statusPill(o.status)}</td>
         <td class="num">${sale}</td>
-        <td class="num">${costCell(comm, o.profitEstimated)}</td>
-        <td class="num">${costCell(hasRev ? o.cargo : null, o.cargoEstimated)}</td>
-        <td class="num">${costCell(hasRev ? o.cogs : null, false)}</td>
+        <td class="num op-col-cost">${costCell(comm, o.profitEstimated)}</td>
+        <td class="num op-col-cost">${costCell(hasRev ? o.cargo : null, o.cargoEstimated)}</td>
+        <td class="num op-col-cost">${costCell(hasRev ? o.cogs : null, false)}</td>
         <td class="num">${netProfitCell(o)}</td>
         <td class="num">${marginPill(o.margin)}</td>
       </tr>
