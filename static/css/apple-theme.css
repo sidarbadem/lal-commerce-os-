@@ -102,7 +102,6 @@ tbody tr:hover { background: var(--lal-hover-wash); }
 .lal-flow-step.is-result { color: var(--lal-text-main); background: var(--lal-result-bg); border-color: color-mix(in srgb, var(--lal-accent) 45%, transparent); }
 .pc-external-box { border-radius: var(--lal-radius-lg); border-color: var(--lal-border-soft); background: var(--lal-surface-2); }
 
-.reveal { transform: translateY(7px); transition: opacity 360ms var(--lal-ease-standard), transform 360ms var(--lal-ease-standard); }
 .value-pulse { animation: lal-value-set 420ms var(--lal-ease-standard); }
 @keyframes lal-value-set { 0% { opacity: .45; filter: blur(2px); } 100% { opacity: 1; filter: blur(0); } }
 

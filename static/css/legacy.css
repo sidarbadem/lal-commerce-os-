@@ -336,16 +336,7 @@
     border-bottom-color: var(--lal-border);
   }
 
-  /* ===== SCROLL REVEAL ===== */
-  /* Not: filter:blur KASITLI OLARAK kullanılmıyor — bu panellerde finansal
-     rakamlar / grafikler var, geçiş sırasında bile net okunabilir olmalı. */
-  .reveal {
-    opacity: 0; transform: translateY(16px);
-    transition: opacity 0.55s cubic-bezier(0.16,1,0.3,1), transform 0.55s cubic-bezier(0.16,1,0.3,1);
-    will-change: opacity, transform;
-  }
-  .reveal.is-visible { opacity: 1; transform: translateY(0); }
-  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+  /* Scroll reveal: motion.css / motion.js'e taşındı. */
 
   /* Faz 6: .panel/.card'ın "glass depth" katmanı artık yukarıdaki tek
      tanımın içinde — bu ikinci geçiş kaldırıldı (Faz 1 audit bulgusu). */

@@ -1,0 +1,53 @@
+/* =====================================================================
+   LAL hareket katmani (motion.js ile birlikte)
+   Icerik varsayilan olarak gorunur; .mo-rv sadece JS'in ekran disinda
+   buldugu bloklara eklenir.
+   ===================================================================== */
+
+/* Kaydirma ilerleme cizgisi: ust barin hemen altinda, ince ve sakin */
+.lal-scroll-progress {
+  position: fixed; top: var(--lal-topbar-h, 56px); left: 0; right: 0; z-index: 25;
+  height: 2px; transform-origin: 0 50%; transform: scaleX(0);
+  background: linear-gradient(90deg, var(--lal-accent), color-mix(in srgb, var(--lal-accent) 40%, var(--lal-amber)));
+  opacity: 0; transition: opacity .3s ease; pointer-events: none;
+}
+.lal-scroll-progress.is-on { opacity: .85; }
+
+/* Belirme */
+html.mo-on .mo-rv {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0) scale(.985);
+  transition:
+    opacity .7s cubic-bezier(.2, .7, .1, 1) var(--mo-delay, 0ms),
+    transform .8s cubic-bezier(.2, .7, .1, 1) var(--mo-delay, 0ms);
+}
+html.mo-on .mo-rv.mo-in { opacity: 1; transform: none; }
+
+/* Deger guncellemesi (blur yok: rakam her an okunabilir) */
+.value-pulse { animation: lal-value-pulse .5s cubic-bezier(.16, 1, .3, 1); }
+@keyframes lal-value-pulse {
+  0% { opacity: .3; transform: translateY(3px); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Iskelet (yukleniyor) blogu: sayfalar .lal-skel ekleyebilir */
+.lal-skel {
+  position: relative; overflow: hidden; border-radius: var(--lal-radius-md, 8px);
+  background: var(--lal-surface-2, rgba(255, 255, 255, .06)); min-height: 14px;
+}
+.lal-skel::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--lal-text-main) 7%, transparent), transparent);
+  animation: lal-skel 1.4s ease-in-out infinite;
+}
+@keyframes lal-skel { to { transform: translateX(100%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  html.mo-on .mo-rv { opacity: 1; transform: none; transition: none; }
+  .value-pulse, .lal-skel::after { animation: none; }
+  .lal-scroll-progress { display: none; }
+}
+@media print {
+  html.mo-on .mo-rv { opacity: 1 !important; transform: none !important; }
+  .lal-scroll-progress { display: none; }
+}
