@@ -120,3 +120,24 @@ def test_review_notification_includes_product_name_and_image(db):
     assert rev["image_url"] == "https://img/x.jpg"
     unknown = by_sku["BILINMEYEN"]["detail"]["reviews"][0]
     assert unknown["product_name"] is None and unknown["image_url"] is None
+
+
+def test_old_review_notification_enriched_on_read(db):
+    import json
+    with database.get_connection() as conn:
+        notifications.ensure_schema(conn)
+        conn.execute(
+            "INSERT INTO orders (shipment_package_id, marketplace, order_number, "
+            "order_date, status, net_amount) VALUES (9, 'hepsiburada', 'H9', 1759600000000, 'Delivered', 10)"
+        )
+        conn.execute(
+            "INSERT INTO order_lines (shipment_package_id, marketplace, barcode, merchant_sku, "
+            "product_name, quantity) VALUES (9, 'hepsiburada', 'HBCV1', 'SH-X', 'HB Adi', 1)"
+        )
+        conn.execute(
+            "INSERT INTO notifications (kind, title, body, detail_json) VALUES ('review', 't', 'b', ?)",
+            (json.dumps({"reviews": [{"marketplace": "hepsiburada", "sku": "HBCV1", "star": 5}]}),),
+        )
+    rev = notifications.list_notifications()["items"][0]["detail"]["reviews"][0]
+    assert rev["product_name"] == "HB Adi"
+    assert rev["merchant_sku"] == "SH-X"

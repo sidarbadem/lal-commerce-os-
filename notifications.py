@@ -377,7 +377,30 @@ def list_notifications(after_id=0, limit=30):
         unread = conn.execute(
             "SELECT COUNT(*) FROM notifications WHERE read_at IS NULL"
         ).fetchone()[0]
-    return {"items": [_row_to_item(r) for r in rows], "unread": unread}
+        items = [_row_to_item(r) for r in rows]
+        _enrich_reviews(conn, items)
+    return {"items": items, "unread": unread}
+
+
+def _enrich_reviews(conn, items):
+    """Urun bilgisi olmadan kaydedilmis (eski) yorum bildirimlerini okuma
+    aninda tamamlar; DB'ye yazmaz."""
+    missing = [
+        v for n in items if n["kind"] == "review"
+        for v in (n["detail"].get("reviews") or [])
+        if v.get("sku") and "product_name" not in v
+    ]
+    if not missing:
+        return
+    try:
+        products = _review_products(conn, [{"product_sku": v["sku"]} for v in missing])
+    except Exception:
+        return
+    for v in missing:
+        info = products.get(v["sku"]) or {}
+        v["merchant_sku"] = info.get("merchant_sku")
+        v["product_name"] = info.get("name")
+        v["image_url"] = info.get("image_url")
 
 
 def mark_read(ids=None):
