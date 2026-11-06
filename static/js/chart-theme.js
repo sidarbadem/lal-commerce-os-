@@ -112,5 +112,26 @@
     });
   }
 
+  // Dar ekran (telefon): sütun üstü etiketleri üst üste biner -> gizle;
+  // x ekseni yazıları eğik değil yatay ve seyrek olsun. Geniş ekranda eski ayar döner.
+  C.register({
+    id: 'lalCompact',
+    beforeUpdate: function (chart) {
+      var host = chart.canvas && chart.canvas.parentNode;
+      var small = !!host && host.clientWidth > 0 && host.clientWidth < 560;
+      var dl = chart.options.plugins && chart.options.plugins.datalabels;
+      if (dl) {
+        if (chart.$lalDl === undefined) chart.$lalDl = dl.display;
+        dl.display = small ? false : chart.$lalDl;
+      }
+      var x = chart.options.scales && chart.options.scales.x;
+      if (x && x.ticks) {
+        if (chart.$lalRot === undefined) chart.$lalRot = { r: x.ticks.maxRotation, l: x.ticks.maxTicksLimit };
+        x.ticks.maxRotation = small ? 0 : chart.$lalRot.r;
+        x.ticks.maxTicksLimit = small ? 6 : chart.$lalRot.l;
+      }
+    }
+  });
+
   window.LALChart = { cssVar: v, refreshTheme: applyTheme };
 })();

@@ -324,6 +324,8 @@ static/js/motion.js       → HER sayfada. Tek hareket katmanı: içerik varsay�
                             sadece ekran dışındaki bloklar belirme alır (emniyet zamanlayıcılı).
                             (Eski ui-effects.js + reveal.js çakışıp panelleri gizli bırakıyordu.)
 static/js/sidebar.js      → kenar çubuğu + ≤900px çekmece menü (☰, alt sekmedeki "Diğer")
+static/js/mobile.js       → ≤900px: segment kontrol + dönem seçiciyi gezinme çubuğunun 2. satırına taşır,
+                            aşağı çek-yenile (iPhone ana ekran uygulamasında yenile düğmesi yok)
 static/js/gosterge-paneli.js, urunler.js, siparisler.js,
 static/js/finans-giderler.js, stock-settings.js,
 static/js/ayarlar-credentials.js, payout-calendar.js

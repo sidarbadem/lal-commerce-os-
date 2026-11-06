@@ -371,6 +371,8 @@
   const monthlyProfitBarValueLabels = {
     id: 'mpcBarValueLabels',
     afterDatasetsDraw(chart) {
+      // Telefonda (dar grafik) dikey etiketler okunmuyor; değerler tooltip'te ve tabloda.
+      if (chart.width < 560) return;
       const ctx = chart.ctx;
       const zeroY = chart.scales.y.getPixelForValue(0);
       // Kısa etiket: ₺ işareti yok (eksende/tooltip'te var).
