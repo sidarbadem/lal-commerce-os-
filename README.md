@@ -251,7 +251,11 @@ gerekiyorsa `static/js/xxx.js` + `{% block page_scripts %}`.
                             cam topbar, cümle düzeni etiketler). Renk TANIMLAMAZ.
 + sayfa-özel CSS (varsa)  → product-cards.css, paketlenecekler.css, payout-calendar.css,
                             monthly-profit-chart.css, ayarlar-credentials.css, components-addition.css
+6. motion.css             → kaydırma ile belirme (.mo-rv), ilerleme çizgisi, iskelet (.lal-skel)
 + sidebar/topbar          → sidebar-editorial.css ve topbar-editorial.css (şablonlardan yüklenir)
++ mobile.css (EN SON)     → ≤900px çekmece menü + alt sekme çubuğu (_tabbar.html),
+                            ≤760px içerik yoğunluğu (Siparişler tablo→kart vb.).
+                            extra_css bloğundan sonra yüklenir; masaüstüne dokunmaz.
 ```
 
 Yeni bir renk/spacing değeri gerekiyorsa **önce `tokens.css`'e eklenir**,
@@ -313,7 +317,13 @@ static/js/shell.js       → HER sayfada yüklenir. Ortak biçimlendirme (fmtTL,
                             global yardımcılar. Sayfa-özel modüller bunun
                             tanımladığı 'lal:data-refresh' event'ini dinler.
 static/js/alerts.js       → HER sayfada yüklenir, üst uyarı bandı
-static/js/ui-effects.js   → HER sayfada yüklenir, genel UI efektleri
+static/js/chart-theme.js  → HER sayfada, sayfa scriptlerinden ÖNCE. Chart.js varsayılanları
+                            (tooltip/ızgara/etkileşim), tema değişiminde yeniden boyama,
+                            ekran dışında doğan grafiği ekrana girince yeniden çizme.
+static/js/motion.js       → HER sayfada. Tek hareket katmanı: içerik varsayılan GÖRÜNÜR,
+                            sadece ekran dışındaki bloklar belirme alır (emniyet zamanlayıcılı).
+                            (Eski ui-effects.js + reveal.js çakışıp panelleri gizli bırakıyordu.)
+static/js/sidebar.js      → kenar çubuğu + ≤900px çekmece menü (☰, alt sekmedeki "Diğer")
 static/js/gosterge-paneli.js, urunler.js, siparisler.js,
 static/js/finans-giderler.js, stock-settings.js,
 static/js/ayarlar-credentials.js, payout-calendar.js

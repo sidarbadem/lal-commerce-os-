@@ -84,4 +84,63 @@
   window.addEventListener('load', function () { rest(true); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { rest(true); });
   requestAnimationFrame(function () { rest(true); });
+
+  // ---------- Telefon/tablet: çekmece menü ----------
+  var mq = window.matchMedia('(max-width: 900px)');
+  var menuBtn = document.getElementById('lal-menu-btn');
+  var scrim = document.createElement('div');
+  scrim.className = 'lal-drawer-scrim';
+  scrim.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(scrim);
+  var lastFocus = null;
+
+  function setOpen(open) {
+    if (open && !mq.matches) return;
+    root.classList.toggle('lal-drawer-open', open);
+    if (menuBtn) {
+      menuBtn.setAttribute('aria-expanded', String(open));
+      menuBtn.setAttribute('aria-label', open ? 'Menüyü kapat' : 'Menüyü aç');
+    }
+    if (open) {
+      lastFocus = document.activeElement;
+      var first = sb.querySelector('a.lal-nav-item');
+      if (first) setTimeout(function () { first.focus({ preventScroll: true }); }, 60);
+    } else if (lastFocus && lastFocus.focus) {
+      lastFocus.focus({ preventScroll: true });
+      lastFocus = null;
+    }
+  }
+  function applyMode() {
+    // Telefonda daraltılmış (ikon) mod anlamsız: çekmece her zaman tam genişlik.
+    if (mq.matches) {
+      sb.classList.remove('is-collapsed');
+      root.style.removeProperty('--lal-sidebar-w');
+    } else {
+      setOpen(false);
+      var c = false;
+      try { c = localStorage.getItem(KEY) === '1'; } catch (e) {}
+      if (c !== sb.classList.contains('is-collapsed')) setCollapsed(c, false);
+    }
+  }
+  if (menuBtn) menuBtn.addEventListener('click', function () {
+    setOpen(!root.classList.contains('lal-drawer-open'));
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest('[data-open-menu]');
+    if (t) { e.preventDefault(); setOpen(true); }
+  });
+  scrim.addEventListener('click', function () { setOpen(false); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && root.classList.contains('lal-drawer-open')) setOpen(false);
+  });
+  items.forEach(function (it) { it.addEventListener('click', function () { if (mq.matches) setOpen(false); }); });
+  // Soldan kaydırarak kapat
+  var sx = null;
+  sb.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; }, { passive: true });
+  sb.addEventListener('touchend', function (e) {
+    if (sx !== null && e.changedTouches[0].clientX - sx < -60) setOpen(false);
+    sx = null;
+  }, { passive: true });
+  if (mq.addEventListener) mq.addEventListener('change', applyMode); else mq.addListener(applyMode);
+  applyMode();
 })();

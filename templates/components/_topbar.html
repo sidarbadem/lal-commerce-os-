@@ -1,6 +1,9 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/topbar-editorial.css') }}">
 <header class="lal-topbar">
-  <div>
+  <button class="lal-menu-btn" id="lal-menu-btn" type="button" aria-label="Menüyü aç" aria-controls="lal-sidebar" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+  </button>
+  <div class="lal-topbar-head">
     <div class="lal-topbar-title">{{ lal_page_title }}</div>
     <div class="sub is-hidden" id="env-label"></div>
     <div class="sub is-hidden" id="last-sync-label"></div>

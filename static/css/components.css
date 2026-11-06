@@ -420,7 +420,7 @@ a.lal-version:hover { opacity: 1; text-decoration: underline; }
 #alerts-band.is-compact > .alert { display: flex; align-items: center; }
 #alerts-band.is-compact > .alert > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #alerts-band.is-compact .hint { display: none; }
-.alerts-toggle { align-self: flex-start; background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: inherit; opacity: .7; cursor: pointer; text-decoration: underline; }
+.alerts-toggle { align-self: flex-start; margin-left: var(--lal-space-6); background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: inherit; opacity: .7; cursor: pointer; text-decoration: underline; }
 .alerts-toggle:hover { opacity: 1; }
 
 .ai2-brief-line { padding: 11px 0; border-top: 1px solid var(--lal-border-soft); }
