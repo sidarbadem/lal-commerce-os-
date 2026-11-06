@@ -139,6 +139,10 @@ celery_app.conf.beat_schedule = {
         "task": "hb_auto_prepare_tasks.prepare_new_hepsiburada_orders",
         "schedule": 60 * 5,  # yeni siparişleri 5 dakikada bir kontrol eder
     },
+    "push-dispatch": {
+        "task": "notification_tasks.dispatch_push",
+        "schedule": 60,  # yeni bildirimleri telefona 1 dk icinde iletir
+    },
     "hb-fast-order-notify": {
         "task": "hb_fast_order_tasks.notify_new_hepsiburada_orders",
         "schedule": 60 * 2,  # HB yeni siparisi API'den 2 dk icinde bildirir

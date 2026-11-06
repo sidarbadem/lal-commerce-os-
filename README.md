@@ -429,6 +429,25 @@ Celery Beat (gece 03:00 otomatik senkron için):
 celery -A celery_app beat --loglevel=info
 ```
 
+## Telefondan Kullanım ve Push Bildirimi
+
+- **Erişim:** Flask yalnızca `127.0.0.1:5050` dinler; internete açılmaz. Telefondan erişim
+  Tailscale ile yapılır: Mac'te `tailscale serve --bg 5050` → `https://<mac-adı>.<tailnet>.ts.net`
+  (HTTPS sertifikası Tailscale'den). Telefonda Tailscale açıkken bu adres 4G'de de çalışır.
+- **Ana ekran uygulaması (PWA):** iPhone Safari → Paylaş → Ana Ekrana Ekle. `static/manifest.json`
+  (`start_url=/panel`). iOS'ta push sadece ana ekrandan açılan uygulamada çalışır (iOS 16.4+).
+- **Push:** `web_push.py`. Kaynak `notifications` tablosu; `order`, `order_cancelled`, `review`
+  türleri gönderilir (5'ten fazlaysa tek özet). Beat `push-dispatch` her 60 sn
+  `notification_state.push_last_id` sonrasını sahiplenip yollar (çift gönderim olmaz; ilk
+  çalışmada geçmiş gönderilmez). Abonelikler `push_subscriptions` tablosunda; 404/410 dönen
+  abonelik silinir.
+- **Anahtarlar (.env):** `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, opsiyonel `VAPID_SUBJECT`.
+  Üretmek için: `venv/bin/python3 -c "import web_push; print(web_push.generate_vapid_keys())"`.
+  Anahtar yoksa push tamamen kapalıdır (DB'ye dokunmaz).
+- **Uç noktalar:** `/sw.js` (kök kapsamlı service worker, oturumsuz), `GET /api/push/config`,
+  `POST /api/push/subscribe|unsubscribe|test`. Arayüz: bildirim paneli → "Bu cihaza bildirim".
+- **Bağımlılık notu:** `py-vapid==1.9.2` sabit; 1.9.6+ `cryptography>=46` istiyor, proje 43.0.1'de.
+
 ## Kullanılabilir Sayfalar
 
 | Yol | Açıklama |

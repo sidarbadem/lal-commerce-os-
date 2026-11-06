@@ -139,12 +139,14 @@ def _auth_ok(auth):
 
 from flask import redirect, session, url_for
 
-_PUBLIC_PATHS = {"/", "/tanitim", "/giris", "/cikis", "/api/version"}
+_PUBLIC_PATHS = {"/", "/tanitim", "/giris", "/cikis", "/api/version", "/sw.js", "/static/manifest.json"}
+# Bildirim ikonlari service worker tarafindan cerezsiz cekilebilir.
+_PUBLIC_PREFIXES = ("/static/images/",)
 
 
 @app.before_request
 def _require_auth():
-    if request.path in _PUBLIC_PATHS:
+    if request.path in _PUBLIC_PATHS or request.path.startswith(_PUBLIC_PREFIXES):
         return None
     if not _AUTH_ENABLED:
         return None
