@@ -95,9 +95,21 @@ tbody tr:hover { background: var(--lal-hover-wash); }
 .hf-subrow { padding-left: var(--lal-space-3); border-left: 2px solid var(--lal-accent); border-radius: 0; }
 
 .lal-status-card { background: var(--lal-surface); border: 1px solid var(--lal-border-soft); border-radius: var(--lal-radius-lg); }
-.lal-status-card.risk { background: var(--lal-red-dim); border-color: color-mix(in srgb, var(--lal-red) 30%, transparent); }
-.lal-status-card.opportunity { background: var(--lal-green-dim); border-color: color-mix(in srgb, var(--lal-green) 30%, transparent); }
-.lal-status-card.warning { background: var(--lal-amber-dim); border-color: color-mix(in srgb, var(--lal-amber) 30%, transparent); }
+/* Risk/fırsat kartları: zemin nötr, anlam sadece üst şerit ve başlık noktasında (göze bağırmasın) */
+.lal-status-card { position: relative; overflow: hidden; padding: var(--lal-space-5); }
+.lal-status-card::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--lal-border); }
+.lal-status-card.risk, .lal-status-card.opportunity, .lal-status-card.warning { border-left-width: 1px; border-left-color: var(--lal-border-soft); }
+.lal-status-card.risk { background: linear-gradient(180deg, color-mix(in srgb, var(--lal-red) 6%, var(--lal-surface)) 0, var(--lal-surface) 90px); }
+.lal-status-card.opportunity { background: linear-gradient(180deg, color-mix(in srgb, var(--lal-green) 6%, var(--lal-surface)) 0, var(--lal-surface) 90px); }
+.lal-status-card.warning { background: linear-gradient(180deg, color-mix(in srgb, var(--lal-amber) 6%, var(--lal-surface)) 0, var(--lal-surface) 90px); }
+.lal-status-card.risk::before { background: var(--lal-red); }
+.lal-status-card.opportunity::before { background: var(--lal-green); }
+.lal-status-card.warning::before { background: var(--lal-amber); }
+.lal-status-card-title { display: flex; align-items: center; gap: 8px; }
+.lal-status-card-title::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--lal-text-faint); }
+.lal-status-card.risk .lal-status-card-title::before { background: var(--lal-red); box-shadow: 0 0 0 3px var(--lal-red-dim); }
+.lal-status-card.opportunity .lal-status-card-title::before { background: var(--lal-green); box-shadow: 0 0 0 3px var(--lal-green-dim); }
+.lal-status-card.warning .lal-status-card-title::before { background: var(--lal-amber); box-shadow: 0 0 0 3px var(--lal-amber-dim); }
 .lal-flow-step { border-radius: var(--lal-radius-md); border: 1px solid var(--lal-border-soft); background: var(--lal-surface-2); }
 .lal-flow-step.is-result { color: var(--lal-text-main); background: var(--lal-result-bg); border-color: color-mix(in srgb, var(--lal-accent) 45%, transparent); }
 .pc-external-box { border-radius: var(--lal-radius-lg); border-color: var(--lal-border-soft); background: var(--lal-surface-2); }

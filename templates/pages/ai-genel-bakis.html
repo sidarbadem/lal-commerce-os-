@@ -225,6 +225,23 @@
   .ai2-risk-watch { background: var(--lal-surface-2); color: var(--lal-text-muted); }
   .ai2-risk-safe { background: var(--lal-green-dim); color: var(--lal-green); }
 
+  /* ---- Brifing içi "neden böyle" + stok aç/kapa ---- */
+  .ai2-why, .ai2-stock-more { margin-top: var(--lal-space-4); border-top: 1px solid var(--lal-border-soft); padding-top: var(--lal-space-3); }
+  .ai2-why > summary, .ai2-stock-more > summary {
+    cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+    font: var(--lal-text-small); color: var(--lal-text-muted); user-select: none;
+  }
+  .ai2-why > summary::-webkit-details-marker, .ai2-stock-more > summary::-webkit-details-marker { display: none; }
+  .ai2-why > summary::before, .ai2-stock-more > summary::before {
+    content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg); transition: transform .2s ease; margin-right: 2px;
+  }
+  .ai2-why[open] > summary::before, .ai2-stock-more[open] > summary::before { transform: rotate(45deg); }
+  .ai2-why > summary:hover, .ai2-stock-more > summary:hover { color: var(--lal-text-main); }
+  .ai2-why[open] > summary { margin-bottom: var(--lal-space-4); }
+  .ai2-stock-more[open] > summary { margin-bottom: var(--lal-space-2); }
+  .ai2-stock-ok { font: var(--lal-text-body); color: var(--lal-text-muted); padding: 6px 0; }
+
   /* ---- Bugün Neden Böyle? ---- */
   .ai2-anomaly-figure {
     display: flex;
@@ -483,14 +500,36 @@
   <div class="ai2-layout">
     <div class="ai2-main">
 
-      <!-- 1) GÜNLÜK AI BRİFİNGİ -->
+      <!-- 1) GÜNLÜK AI BRİFİNGİ + BUGÜN NEDEN BÖYLE (tek panel) -->
       <div class="lal-panel">
         <h2 class="lal-panel-title">Günlük AI Brifingi</h2>
         <div class="ai2-briefing-summary" id="ai2-briefing-text">Brifing hazırlanıyor…</div>
+        <details class="ai2-why">
+          <summary>Bugün neden böyle?</summary>
+          <div id="ai2-anomaly-body">Hesaplanıyor…</div>
+        </details>
         <a href="/gosterge-paneli" class="ai2-briefing-link">Detaylı Analiz'de incele →</a>
       </div>
 
-      <!-- 3) AYLIK HEDEF & MOMENTUM -->
+      <!-- 2) RİSKLER / FIRSATLAR -->
+      <div class="lal-grid-2">
+        <div class="lal-status-card risk">
+          <div class="lal-status-card-title">Riskler</div>
+          <div class="lal-status-card-body" id="ai-risks">Yükleniyor…</div>
+        </div>
+        <div class="lal-status-card opportunity">
+          <div class="lal-status-card-title">Fırsatlar</div>
+          <div class="lal-status-card-body" id="ai-opportunities">Yükleniyor…</div>
+        </div>
+      </div>
+
+      <!-- 3) STOK TÜKENME GERİ SAYIMI (sadece riskliler, gerisi açılır) -->
+      <div class="lal-panel">
+        <h2 class="lal-panel-title">Stok Tükenme Geri Sayımı</h2>
+        <div id="ai2-stock-depletion">Yükleniyor…</div>
+      </div>
+
+      <!-- 4) AYLIK HEDEF & MOMENTUM -->
       <div class="lal-panel">
         <h2 class="lal-panel-title">Aylık Hedef &amp; Momentum</h2>
         <div class="ai2-momentum-figures">
@@ -513,35 +552,11 @@
         <div class="ai2-momentum-footnote" id="ai2-mom-footnote">Hesaplanıyor…</div>
       </div>
 
-      <div class="lal-grid-2">
-        <div class="lal-status-card risk">
-          <div class="lal-status-card-title">Riskler</div>
-          <div class="lal-status-card-body" id="ai-risks">Yükleniyor…</div>
-        </div>
-        <div class="lal-status-card opportunity">
-          <div class="lal-status-card-title">Fırsatlar</div>
-          <div class="lal-status-card-body" id="ai-opportunities">Yükleniyor…</div>
-        </div>
-      </div>
-
-      <!-- 4) STOK TÜKENME GERİ SAYIMI -->
-      <div class="lal-panel">
-        <h2 class="lal-panel-title">Stok Tükenme Geri Sayımı</h2>
-        <div id="ai2-stock-depletion">Yükleniyor…</div>
-      </div>
-
-      <!-- 5) BUGÜN NEDEN BÖYLE? -->
-      <div class="lal-panel">
-        <h2 class="lal-panel-title">Bugün Neden Böyle?</h2>
-        <div id="ai2-anomaly-body">Hesaplanıyor…</div>
-      </div>
-
-      <!-- 7) NAKİT AKIŞI & SETTLEMENT TAKVİMİ -->
+      <!-- 5) NAKİT AKIŞI & SETTLEMENT TAKVİMİ -->
       <div class="lal-panel">
         <h2 class="lal-panel-title">Nakit Akışı &amp; Settlement Takvimi</h2>
         <div id="ai2-cashflow">Yükleniyor…</div>
       </div>
-
 
     </div>
 
@@ -1066,11 +1081,11 @@
         var db = b.depletionDays === null ? Infinity : b.depletionDays;
         return da - db;
       })
-      .slice(0, 10);
+      .slice(0, 30);
 
     if (!rows.length) { el.innerHTML = '<div class="ai2-anomaly-caption">Stok/satış verisi eşleşmedi — yeterli veri yok.</div>'; return; }
 
-    el.innerHTML = rows.map(function (r) {
+    function rowHtml(r) {
       var risk = riskLevel(r.depletionDays);
       var daysLabel = r.depletionDays === null ? 'Yeterli veri yok' : (r.depletionDays + ' gün');
       return '<div class="ai2-stock-row">'
@@ -1080,7 +1095,18 @@
         + '<span class="ai2-stock-days">' + daysLabel + '</span>'
         + '<span class="ai2-risk-pill ' + risk.cls + '">' + risk.label + '</span>'
         + '</span></div>';
-    }).join('');
+    }
+    // Sadece dikkat isteyenler gorunur; "Guvenli" olanlar tek tikla acilir.
+    var hot = rows.filter(function (r) { return riskLevel(r.depletionDays).cls !== 'ai2-risk-safe'; });
+    var calm = rows.filter(function (r) { return riskLevel(r.depletionDays).cls === 'ai2-risk-safe'; });
+    var html = hot.length
+      ? hot.map(rowHtml).join('')
+      : '<div class="ai2-stock-ok">Tüm ürünlerde stok yeterli görünüyor.</div>';
+    if (calm.length) {
+      html += '<details class="ai2-stock-more"><summary>Stoğu yeterli ' + calm.length + ' ürünü göster</summary>'
+        + calm.map(rowHtml).join('') + '</details>';
+    }
+    el.innerHTML = html;
   }
 
   function renderOpportunities() {
