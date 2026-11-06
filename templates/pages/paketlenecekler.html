@@ -63,17 +63,17 @@
   }
   function actions(r, idx) {
     if (r.marketplace === 'trendyol') {
-      return r.state === 'created' ? '<div class="pk-actions">' + actionBtn('picking', idx, 'Toplamaya başla', false) + actionBtn('ty_cargo', idx, 'Kargo firmasını değiştir', false) + '<a class="lal-btn lal-btn-secondary" target="_blank" rel="noopener" href="/api/paketlenecekler/ty/etiket?package_id=' + encodeURIComponent(String(r.package_id)) + '">Etiketi yazdır</a></div>' : '';
+      return r.state === 'created' ? '<div class="pk-actions">' + actionBtn('picking', idx, 'Toplamaya başla', false) + actionBtn('ty_cargo', idx, 'Kargo firmasını değiştir', false) + '<a class="lal-btn lal-btn-primary pk-print" target="_blank" rel="noopener" href="/api/paketlenecekler/ty/etiket?package_id=' + encodeURIComponent(String(r.package_id)) + '">Etiketi yazdır</a></div>' : '';
     }
     if (r.marketplace !== 'hepsiburada') return '';
     var b = [];
     if (r.state === 'unpacked') {
-      b.push(actionBtn('pack', idx, 'Paketi hazırla', r.can_pack === false));
+      b.push(actionBtn('pack', idx, 'Paketi hazırla', r.can_pack === false).replace('lal-btn-secondary', 'lal-btn-primary'));
       b.push(actionBtn('cargo_line', idx, 'Kargo firmasını değiştir', r.cargo_changable === false));
     } else if (r.state === 'packed') {
       b.push(actionBtn('cargo_package', idx, 'Kargo firmasını değiştir', false));
       b.push(actionBtn('unpack', idx, 'Paketi boz', false));
-      b.push('<a class="lal-btn lal-btn-secondary" target="_blank" rel="noopener" href="/api/paketlenecekler/hb/etiket?package_number=' + encodeURIComponent(String(r.package_id)) + '">Etiketi yazdır</a>');
+      b.push('<a class="lal-btn lal-btn-primary pk-print" target="_blank" rel="noopener" href="/api/paketlenecekler/hb/etiket?package_number=' + encodeURIComponent(String(r.package_id)) + '">Etiketi yazdır</a>');
     }
     return '<div class="pk-actions">' + b.join('') + '</div>';
   }
@@ -87,14 +87,15 @@
     }).join('');
     var ty = r.marketplace === 'trendyol';
     var state = r.state === 'packed' ? 'Paket hazır, kargolanacak' : 'Paketlenecek';
-    return '<article class="pk-card"><div>' +
+    return '<article class="pk-card" data-start="' + (r.order_date_ms || '') + '" data-due="' + (r.due_ms || '') + '"><div>' +
       '<div class="pk-head">' + selBox(r, idx) + '<span class="pk-badge ' + (ty ? 'pk-mp-ty' : 'pk-mp-hb') + '">' +
       (ty ? 'Trendyol' : 'Hepsiburada') + '</span><span class="pk-no">' + esc(r.order_number) +
       '</span><span class="pk-state">' + state + '</span></div>' +
       '<ul class="pk-lines">' + lines + '</ul>' +
       '<div class="pk-meta">' + esc(r.customer) + (r.customer ? ' · ' : '') + 'Sipariş: ' + dt(r.order_date_ms) +
       (r.cargo ? ' · ' + esc(r.cargo) : '') + '</div>' + actions(r, idx) + '</div>' +
-      '<div class="pk-side"><span class="pk-timer" data-due="' + (r.due_ms || '') + '">—</span>' +
+      '<div class="pk-side"><span class="pk-left-label">Kalan süre</span><span class="pk-timer" data-due="' + (r.due_ms || '') + '">—</span>' +
+      '<span class="pk-meter" aria-hidden="true"><i></i></span>' +
       '<span class="pk-due">Kargoya teslim: ' + dt(r.due_ms) + '</span>' +
       '<div class="pk-total">' + money(r.total) + '</div></div></article>';
   }
@@ -258,14 +259,27 @@
       var due = Number(el.getAttribute('data-due'));
       if (!due) { el.textContent = '—'; return; }
       var s = Math.floor((due - now) / 1000);
+      var card = el.closest('.pk-card');
+      var level = s < 0 ? 'late' : (s < 7200 ? 'urgent' : (s < 6 * 3600 ? 'soon' : 'ok'));
+      if (card) {
+        if (card.getAttribute('data-level') !== level) card.setAttribute('data-level', level);
+        var start = Number(card.getAttribute('data-start'));
+        var bar = card.querySelector('.pk-meter i');
+        if (bar && start && due > start) {
+          var left = Math.max(0, Math.min(1, (due - now) / (due - start)));
+          bar.style.transform = 'scaleX(' + left.toFixed(3) + ')';
+        }
+      }
       if (s < 0) { el.textContent = 'Süre geçti'; el.classList.add('is-late'); return; }
+      el.classList.remove('is-late');
       var d = Math.floor(s / 86400);
       var h = Math.floor((s % 86400) / 3600);
       var m = Math.floor((s % 3600) / 60);
       var x = s % 60;
-      var t = [h, m, x].map(function (n) { return String(n).padStart(2, '0'); }).join(':');
-      el.textContent = (d ? d + 'g ' : '') + t;
-      el.classList.toggle('is-soon', s < 7200);
+      var pad = function (n) { return String(n).padStart(2, '0'); };
+      el.innerHTML = (d ? d + '<small>g</small> ' : '') + h + '<small>sa</small> ' + pad(m) + '<small>dk</small> <span class="pk-sec">' + pad(x) + '</span>';
+      el.classList.toggle('is-soon', s < 6 * 3600 && s >= 7200);
+      el.classList.toggle('is-urgent', s < 7200);
     });
   }
   function load(force) {
