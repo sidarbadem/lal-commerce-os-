@@ -30,6 +30,8 @@
 .lal-nicon.is-order_cancelled { color: var(--lal-red, #ef6a6a); }
 .lal-nicon.is-order_prepared { color: var(--lal-green); }
 .lal-nicon.is-profit_final { color: var(--lal-green); }
+.lal-nthumb { object-fit: cover; border-radius: 8px; background: #fff; border: 1px solid var(--lal-border-soft); }
+.lal-nstrip .lal-nthumb { width: 32px; height: 32px; }
 
 .lal-nstrip {
   position: fixed; top: 14px; left: 50%; z-index: 1250; overflow: hidden;
@@ -106,6 +108,19 @@
 .lal-nrow-main { flex: 1; min-width: 0; color: var(--lal-text-main); }
 .lal-nrow-end { color: var(--lal-text-main); }
 .lal-nrow-text { flex-basis: 100%; color: var(--lal-text-muted); }
+.lal-nprod { flex-basis: 100%; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.lal-nprod-img {
+  flex: none; width: 44px; height: 44px; object-fit: cover; border-radius: 8px;
+  background: #fff; border: 1px solid var(--lal-border-soft);
+}
+.lal-nprod-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.lal-nprod-name {
+  color: var(--lal-text-main); font-weight: 600; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.lal-nprod-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lal-nprod-stars { color: var(--lal-amber); letter-spacing: 1px; }
+.lal-nprod-sku { font: var(--lal-text-micro); color: var(--lal-text-faint); }
 .lal-nrow-more { padding: 6px 0 2px; font: var(--lal-text-micro); color: var(--lal-text-faint); }
 .lal-nmp { font: var(--lal-text-micro); letter-spacing: 0; color: var(--lal-text-faint); }
 .lal-nmp.is-trendyol { color: var(--lal-mp-trendyol); }
