@@ -9,12 +9,14 @@ build_hb_label(pdf_bytes, order)
 stamp_hb_label(pdf_bytes)
     Sipariş verisi yoksa yedek: HB etiketinin boş alanına yalnız logolu kart basar.
 
-İkisi de beklenmedik sayfa boyutunda orijinal PDF'i aynen döndürür.
+HB etiketi 4x6 değilse (ör. Aras Kargo etiketi büyük/kare sayfanın köşesinde gelir)
+sayfadaki içeriğin sınırı bulunur, o blok 4x6 etiketin içine sığdırılır; tasarım aynı.
 Bu dosyadaki metinler YALNIZCA Hepsiburada içindir (Trendyol metni yok).
 """
 import io
 
 from pypdf import PdfReader, PdfWriter, Transformation
+from pypdf.generic import ContentStream, RectangleObject
 from reportlab.lib.utils import simpleSplit
 from reportlab.pdfgen import canvas
 
@@ -35,6 +37,194 @@ REVIEW = "Memnun kaldıysanız ürününüzü değerlendirmenizi bekleriz."
 def _size_ok(page):
     w, h = float(page.mediabox.width), float(page.mediabox.height)
     return abs(w - EXPECTED[0]) <= TOL and abs(h - EXPECTED[1]) <= TOL and not page.get("/Rotate")
+
+
+# ---------- 4x6 olmayan HB sayfaları: içerik sınırı + sığdırma ----------
+def _mul(a, b):
+    """PDF afin çarpımı (önce a, sonra b)."""
+    return (a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3],
+            a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3],
+            a[4] * b[0] + a[5] * b[2] + b[4], a[4] * b[1] + a[5] * b[3] + b[5])
+
+
+def _pt(m, x, y):
+    return (x * m[0] + y * m[2] + m[4], x * m[1] + y * m[3] + m[5])
+
+
+def _nums(ops):
+    out = []
+    for v in ops:
+        try:
+            out.append(float(v))
+        except Exception:
+            return None
+    return out
+
+
+_PAINT = {b"S", b"s", b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*"}
+_FILL_ONLY = {b"f", b"F", b"f*"}
+
+
+def _ink_points(stream, resources, reader, ctm, page_area, depth=0):
+    """Sayfada gerçekten görünen öğelerin (yol, metin, görsel) köşe noktaları."""
+    pts = []
+    try:
+        ops = ContentStream(stream, reader).operations
+    except Exception:
+        return pts
+    xobjs = {}
+    try:
+        xobjs = (resources or {}).get("/XObject") or {}
+        xobjs = xobjs.get_object() if hasattr(xobjs, "get_object") else xobjs
+    except Exception:
+        xobjs = {}
+    stack = []
+    path = []
+    white = False
+    tm = tlm = (1, 0, 0, 1, 0, 0)
+    fs, lead = 10.0, 0.0
+    for operands, op in ops:
+        if op == b"q":
+            stack.append((ctm, white))
+        elif op == b"Q":
+            if stack:
+                ctm, white = stack.pop()
+        elif op == b"cm":
+            n = _nums(operands)
+            if n and len(n) == 6:
+                ctm = _mul(tuple(n), ctm)
+        elif op in (b"g", b"rg", b"k", b"sc", b"scn"):
+            n = _nums(operands) or []
+            if op == b"k":
+                white = bool(n) and all(v <= 0.02 for v in n)
+            else:
+                white = bool(n) and all(v >= 0.98 for v in n)
+        elif op in (b"m", b"l"):
+            n = _nums(operands)
+            if n:
+                path.append(_pt(ctm, n[0], n[1]))
+        elif op in (b"c", b"v", b"y"):
+            n = _nums(operands)
+            if n:
+                path.append(_pt(ctm, n[-2], n[-1]))
+        elif op == b"re":
+            n = _nums(operands)
+            if n and len(n) == 4:
+                x, y, w, h = n
+                path += [_pt(ctm, x, y), _pt(ctm, x + w, y), _pt(ctm, x, y + h), _pt(ctm, x + w, y + h)]
+        elif op in _PAINT:
+            if path and not (white and op in _FILL_ONLY):
+                xs = [p[0] for p in path]
+                ys = [p[1] for p in path]
+                if (max(xs) - min(xs)) * (max(ys) - min(ys)) < 0.8 * page_area:  # sayfa zemini değil
+                    pts += path
+            path = []
+        elif op == b"n":
+            path = []
+        elif op == b"BT":
+            tm = tlm = (1, 0, 0, 1, 0, 0)
+        elif op == b"Tf":
+            n = _nums(operands[1:])
+            if n:
+                fs = abs(n[0]) or fs
+        elif op == b"TL":
+            n = _nums(operands)
+            if n:
+                lead = n[0]
+        elif op in (b"Td", b"TD"):
+            n = _nums(operands)
+            if n:
+                if op == b"TD":
+                    lead = -n[1]
+                tlm = _mul((1, 0, 0, 1, n[0], n[1]), tlm)
+                tm = tlm
+        elif op == b"Tm":
+            n = _nums(operands)
+            if n and len(n) == 6:
+                tm = tlm = tuple(n)
+        elif op in (b"T*", b"'", b'"'):
+            tlm = _mul((1, 0, 0, 1, 0, -lead), tlm)
+            tm = tlm
+        if op in (b"Tj", b"TJ", b"'", b'"'):
+            arg = operands[-1] if operands else b""
+            if op == b"TJ":
+                n_ch = sum(len(x) for x in arg if isinstance(x, (str, bytes)))
+            else:
+                n_ch = len(arg) if isinstance(arg, (str, bytes)) else 1
+            w = fs * 0.55 * max(n_ch, 1)
+            m = _mul(tm, ctm)
+            pts += [_pt(m, 0, -fs * 0.2), _pt(m, w, fs)]
+            tm = _mul((1, 0, 0, 1, w, 0), tm)
+        elif op == b"INLINE IMAGE":
+            pts += [_pt(ctm, 0, 0), _pt(ctm, 1, 1)]
+        elif op == b"Do" and operands:
+            try:
+                xo = xobjs[operands[0]].get_object()
+            except Exception:
+                continue
+            sub = xo.get("/Subtype")
+            if sub == "/Image":
+                pts += [_pt(ctm, 0, 0), _pt(ctm, 1, 0), _pt(ctm, 0, 1), _pt(ctm, 1, 1)]
+            elif sub == "/Form" and depth < 4:
+                fm = tuple(float(v) for v in (xo.get("/Matrix") or (1, 0, 0, 1, 0, 0)))
+                pts += _ink_points(xo, xo.get("/Resources") or resources, reader,
+                                   _mul(fm, ctm), page_area, depth + 1)
+    return pts
+
+
+def content_bbox(page, reader=None, pad=3.0):
+    """Sayfadaki içeriğin sınır kutusu (x0, y0, x1, y1); bulunamazsa sayfanın tamamı."""
+    mb = page.mediabox
+    px0, py0, px1, py1 = float(mb.left), float(mb.bottom), float(mb.right), float(mb.top)
+    full = (px0, py0, px1, py1)
+    try:
+        contents = page.get_contents()
+        if contents is None:
+            return full
+        pts = _ink_points(contents, page.get("/Resources"), reader,
+                          (1, 0, 0, 1, 0, 0), (px1 - px0) * (py1 - py0))
+    except Exception:
+        return full
+    if not pts:
+        return full
+    x0 = max(px0, min(p[0] for p in pts) - pad)
+    y0 = max(py0, min(p[1] for p in pts) - pad)
+    x1 = min(px1, max(p[0] for p in pts) + pad)
+    y1 = min(py1, max(p[1] for p in pts) + pad)
+    if x1 - x0 < 20 or y1 - y0 < 20:
+        return full
+    return (x0, y0, x1, y1)
+
+
+def _fit_into(page, reader, box, max_scale=2.0):
+    """Sayfanın içerik bloğunu box=(x, y, w, h) içine (oran korunarak, üste yaslı) yerleştirir,
+    sayfayı 4x6 yapar. Yerleşen bloğun (x0, y0, x1, y1) kutusunu döndürür."""
+    if page.get("/Rotate"):
+        page.transfer_rotation_to_content()
+    bx0, by0, bx1, by1 = content_bbox(page, reader)
+    bw, bh = bx1 - bx0, by1 - by0
+    x, y, w, h = box
+    s = min(w / bw, h / bh, max_scale)
+    dx = x + (w - bw * s) / 2
+    dy = y + h - bh * s
+    page.add_transformation(Transformation().translate(-bx0, -by0).scale(s, s).translate(dx, dy))
+    rect = RectangleObject([0, 0, W, H])
+    page.mediabox = rect
+    page.cropbox = rect
+    for k in ("/TrimBox", "/BleedBox", "/ArtBox"):
+        if k in page:
+            del page[k]
+    return (dx, dy, dx + bw * s, dy + bh * s)
+
+
+def _mask(c, keep):
+    """keep dışındaki her şeyi beyazla örter (sığdırılan sayfanın taşan kısımları)."""
+    kx0, ky0, kx1, ky1 = keep
+    c.setFillColorRGB(1, 1, 1)
+    c.rect(0, ky1, W, H - ky1, stroke=0, fill=1)
+    c.rect(0, 0, W, ky0, stroke=0, fill=1)
+    c.rect(0, 0, kx0, H, stroke=0, fill=1)
+    c.rect(kx1, 0, W - kx1, H, stroke=0, fill=1)
 
 
 # ---------- tam etiket ----------
@@ -171,10 +361,12 @@ def _draw_lower(c, o):
         ty -= 8.1
 
 
-def _full_overlay(o):
+def _full_overlay(o, keep=None):
     t._ensure_fonts()
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(W, H))
+    if keep:
+        _mask(c, keep)
     c.setFillColorRGB(1, 1, 1)
     c.rect(0, 0, W, BLOCK_BOTTOM - 1, stroke=0, fill=1)   # HB'nin eski alt bölümünü kapat
     t.draw_header(c, t._clean(o.get("order_no")), t.cargo_label(o.get("cargo")), H - 8, 30)
@@ -193,6 +385,9 @@ def build_hb_label(pdf_bytes, order):
         if _size_ok(page):
             out_page.add_transformation(Transformation().translate(0, SHIFT))
             out_page.merge_page(_full_overlay(order))
+        else:  # ör. Aras Kargo: büyük sayfanın köşesindeki blok -> 4x6 içine
+            keep = _fit_into(out_page, reader, (M, BLOCK_BOTTOM, W - 2 * M, H + SHIFT - BLOCK_BOTTOM))
+            out_page.merge_page(_full_overlay(order, keep))
     out = io.BytesIO()
     writer.write(out)
     return out.getvalue()
@@ -202,10 +397,12 @@ def build_hb_label(pdf_bytes, order):
 CARD_X, CARD_Y, CARD_W, CARD_H = 137, 8, 145, 108
 
 
-def _card_overlay(width, height):
+def _card_overlay(width, height, keep=None):
     t._ensure_fonts()
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(width, height))
+    if keep:
+        _mask(c, keep)
     _box(c, CARD_X, CARD_Y, CARD_W, CARD_H, 8, 1.2)
     pad = 8
     t.draw_logo(c, CARD_X + pad, CARD_Y + CARD_H - pad - 36, CARD_W - 2 * pad, 36)
@@ -230,6 +427,10 @@ def stamp_hb_label(pdf_bytes):
         out_page = writer.add_page(page)
         if _size_ok(page):
             out_page.merge_page(_card_overlay(float(page.mediabox.width), float(page.mediabox.height)))
+        else:
+            top = CARD_Y + CARD_H + 6
+            keep = _fit_into(out_page, reader, (M, top, W - 2 * M, H - M - top))
+            out_page.merge_page(_card_overlay(W, H, keep))
     out = io.BytesIO()
     writer.write(out)
     return out.getvalue()

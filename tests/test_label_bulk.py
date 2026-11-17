@@ -161,9 +161,34 @@ def test_hb_stamp_keeps_original_and_adds_hepsiburada_text():
     assert "HB-KARGO-BARKODU" in text and "Hepsiburada" in text and "Trendyol" not in text
 
 
-def test_hb_stamp_leaves_unexpected_page_size_untouched():
-    out = hb_label.stamp_hb_label(_hb_like_pdf(size=(595, 842)))
-    assert "Hepsiburada" not in _pages(out)[0].extract_text()
+def _aras_like_pdf(size=(533, 533)):
+    """Aras Kargo HB etiketi gibi: büyük sayfa, blok sol altta, beyaz zemin."""
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=size)
+    c.setFillColorRGB(1, 1, 1)
+    c.rect(0, 0, size[0], size[1], stroke=0, fill=1)
+    c.setFillColorRGB(0, 0, 0)
+    for i in range(40):
+        c.rect(20 + i * 1.5, 210, 0.8, 70, stroke=0, fill=1)
+    c.drawString(10, 190, "ARAS-KARGO-BLOGU")
+    c.line(128, 285, 128, 80)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def test_content_bbox_finds_corner_block_not_page():
+    page = _pages(_aras_like_pdf())[0]
+    x0, y0, x1, y1 = hb_label.content_bbox(page)
+    assert x0 < 25 and 70 < y0 < 85 and 120 < x1 < 140 and 280 < y1 < 295
+
+
+def test_hb_stamp_fits_unexpected_page_size_into_4x6():
+    page = _pages(hb_label.stamp_hb_label(_hb_like_pdf(size=(595, 842))))[0]
+    w, h = _size_mm(page)
+    assert abs(w - 101.6) < 0.5 and abs(h - 152.4) < 0.5
+    text = page.extract_text()
+    assert "HB-KARGO-BARKODU" in text and "Hepsiburada" in text
 
 
 def test_hb_full_label_has_cargo_recipient_region_and_original_block():
@@ -201,9 +226,27 @@ def test_hb_full_label_many_items_does_not_overflow():
     assert "ürün daha" in text
 
 
-def test_hb_full_label_leaves_unexpected_page_size_untouched():
-    text = _pages(hb_label.build_hb_label(_hb_like_pdf(size=(595, 842)), _hb_order()))[0].extract_text()
-    assert "Hepsiburada" not in text
+def test_hb_full_label_fits_aras_style_page_into_4x6():
+    pages = _pages(hb_label.build_hb_label(_aras_like_pdf(), _hb_order(cargo="Aras Kargo")))
+    assert len(pages) == 1
+    w, h = _size_mm(pages[0])
+    assert abs(w - 101.6) < 0.5 and abs(h - 152.4) < 0.5
+    text = pages[0].extract_text()
+    assert "ARAS-KARGO-BLOGU" in text            # HB/Aras bloğu korunur
+    assert "Aras Kargo" in text and "MERKEZ / BİLECİK" in text and "Hepsiburada'dan" in text
+    assert "Trendyol" not in text
+
+
+def test_hb_full_label_fits_rotated_page():
+    from pypdf import PdfWriter
+    w = PdfWriter()
+    w.add_page(_pages(_aras_like_pdf(size=(432, 288)))[0]).rotate(90)
+    buf = io.BytesIO()
+    w.write(buf)
+    page = _pages(hb_label.build_hb_label(buf.getvalue(), _hb_order()))[0]
+    assert not page.get("/Rotate")
+    assert abs(float(page.mediabox.width) - 288) < 1 and abs(float(page.mediabox.height) - 432) < 1
+    assert "ARAS-KARGO-BLOGU" in page.extract_text()
 
 
 # --- rota yardımcıları ---
